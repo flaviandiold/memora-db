@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class MemoraServer implements AutoCloseable {
 
+    private final String host;
     private final int port;
     private final MemoraServer server;
     private final BucketManager bucketManager;
@@ -34,7 +35,8 @@ public class MemoraServer implements AutoCloseable {
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
-    public MemoraServer(int port) {
+    public MemoraServer(String host, int port) {
+        this.host = host;
         this.port = port;
         this.server = this;
         this.bucketManager = BucketManager.getInstance();
@@ -79,7 +81,7 @@ public class MemoraServer implements AutoCloseable {
                     .option(ChannelOption.SO_BACKLOG, 128)
                     .childOption(ChannelOption.SO_KEEPALIVE, true);
 
-            ChannelFuture future = bootstrap.bind(port).sync();
+            ChannelFuture future = bootstrap.bind(host, port).sync();
             serverChannel = future.channel();
             log.info("Memora Server started on port ", port);
 

@@ -32,7 +32,7 @@ public class MemoraNode {
     
         int numberOfBuckets = EnvironmentModule.getNumberOfBuckets();
         BucketManager.buildBuckets(numberOfBuckets);
-        server = new MemoraServer(port);
+        server = new MemoraServer(host, port);
 
         nodeType = NodeType.STANDALONE;
     }

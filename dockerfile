@@ -6,8 +6,9 @@ WORKDIR /app
 # Copy built jar into container
 COPY target/memora-db-1.0.0.jar memora-db.jar
 
-# Expose your port
-EXPOSE 9090
+# Copy CLI wrapper
+COPY memora-cli /usr/local/bin/memora-cli
+RUN chmod +x /usr/local/bin/memora-cli
 
 # Run the jar
 ENTRYPOINT ["java", "-jar", "memora-db.jar"]

@@ -1,2 +1,2 @@
 #!/bin/bash
-exec java -cp memora-cli.jar com.memora.cli.MemoraCLI "$@"
+exec java -cp memora-db.jar com.memora.cli.MemoraCLI "$@"

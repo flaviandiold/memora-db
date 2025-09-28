@@ -1,24 +1,32 @@
 package com.memora.core;
 
 import com.memora.exceptions.RpcException;
-import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 
-import java.io.*;
-import java.net.*;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Simple blocking TCP client for cache RPC calls.
  * Keeps a persistent connection to the server.
  */
+@Slf4j
 public class MemoraClient implements Closeable {
 
     private final String host;
     private final int port;
     private Socket socket;
-    private ObjectOutputStream out;
-    private ObjectInputStream in;
+    private BufferedWriter out;
+    private BufferedReader in;
     private boolean closed = false;
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -37,17 +45,17 @@ public class MemoraClient implements Closeable {
             socket.setKeepAlive(true);
 
             // Order is important: create output stream first and flush.
-            out = new ObjectOutputStream(socket.getOutputStream());
+            out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             out.flush(); // send header immediately
-            in = new ObjectInputStream(socket.getInputStream());
-            System.out.println("CLIENT connected to " + host + ":" + port);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            log.info("CLIENT connected to {}:{}", host, port);
         } catch (IOException e) {
-            System.err.printf("CLIENT failed to connect to %s:%d. Error: %s%n", host, port, e.getMessage());
+            log.error("CLIENT failed to connect to {}:{}. Error: {}", host, port, e.getMessage());
             throw e; // Propagate a checked exception
         }
     }
 
-    public RpcResponse call(RpcRequest request) throws RpcException {
+    public String call(String request) throws RpcException {
         lock.lock();
         try {
             if (closed) {
@@ -60,19 +68,14 @@ public class MemoraClient implements Closeable {
                 }
 
                 System.out.println("CLIENT sending " + request + " to " + host + ":" + port);
-                out.writeObject(request);
-                out.reset(); // Important for mutable objects or multiple writes
+                out.write(request);
+                out.newLine();
                 out.flush();
 
-                Object responseObject = in.readObject();
+                String responseObject = in.readLine();
                 System.out.println("CLIENT received " + responseObject + " from " + host + ":" + port);
-
-                if (responseObject instanceof RpcResponse rpcResponse) {
-                    return rpcResponse;
-                }
-                // Handle cases where the response is not what we expect
-                throw new RpcException("Invalid response type received: " + responseObject.getClass().getName());
-            } catch (IOException | ClassNotFoundException e) {
+                return responseObject;
+            } catch (IOException e) {
                 // This indicates a connection or serialization error, which is critical.
                 System.err.printf("CLIENT error during call to %s:%d. Error: %s%n", host, port, e.getMessage());
                 // We should probably close the connection and let the caller decide to retry.
