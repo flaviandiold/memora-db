@@ -6,10 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import com.google.inject.Inject;
 import com.memora.model.BucketInfo;
 import com.memora.model.BucketMap;
 import com.memora.model.CacheEntry;
-import com.memora.modules.EnvironmentModule;
 import com.memora.store.Bucket;
 import com.memora.utils.ULID;
 
@@ -18,20 +18,17 @@ public class BucketManager {
     // Must coordinate with routing service as well
     private final BucketMap bucketMap;
     private final Map<String, Bucket> buckets;
-    private static final BucketManager INSTANCE = new BucketManager();
-    private final String nodeId = EnvironmentModule.getNodeId();
+    private final String nodeId;
 
-    private BucketManager() {
+    private final RoutingService routingService;
+
+    @Inject
+    public BucketManager(String nodeId, int numberOfBuckets, RoutingService routingService) {
+        this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
         this.buckets = new HashMap<>();
-    }
-
-    public static void buildBuckets(int numberOfBuckets) {
-        INSTANCE.addNewBuckets(numberOfBuckets);
-    }
-
-    public static BucketManager getInstance() {
-        return INSTANCE;
+        this.routingService = routingService;
+        addNewBuckets(numberOfBuckets);
     }
 
     public boolean isInSelf(String key) {
@@ -48,7 +45,7 @@ public class BucketManager {
     }
 
     private String getBucketIdByKey(String key) {
-        int index = RoutingService.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
+        int index = routingService.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
         return bucketMap.getBucketInfo(index).getBucketId();
     }
 

@@ -4,17 +4,20 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
+import com.google.inject.Inject;
+
 public final class RoutingService {
 
 
-    private RoutingService() {
+    @Inject
+    public RoutingService() {
     }
 
     /**
      * Jump Consistent Hash (Lamping & Veach). Maps 64-bit key -> bucket in [0,
      * numBuckets).
      */
-    private static int jumpConsistentHash(long key, int numBuckets) {
+    private int jumpConsistentHash(long key, int numBuckets) {
         if (numBuckets <= 0)
             throw new IllegalArgumentException("numBuckets must be greater than 0");
         long b = -1, j = 0;
@@ -29,7 +32,7 @@ public final class RoutingService {
     /**
      * Convenience method: hashes a String using MurmurHash3 (x64_128) and maps to a bucket.
      */
-    private static int jumpConsistentHash(String key, int numBuckets) {
+    private int jumpConsistentHash(String key, int numBuckets) {
         long hash64 = murmurHash3_x64_128(key.getBytes(StandardCharsets.UTF_8), 0);
         return jumpConsistentHash(hash64, numBuckets);
     }
@@ -39,7 +42,7 @@ public final class RoutingService {
      * @param data input bytes
      * @param seed optional seed (can be 0 for default)
      */
-    private static long murmurHash3_x64_128(byte[] data, int seed) {
+    private long murmurHash3_x64_128(byte[] data, int seed) {
         final int length = data.length;
         final int nblocks = length >>> 4; // / 16
 
@@ -120,7 +123,7 @@ public final class RoutingService {
         return h1;
     }
 
-    private static long fmix64(long k) {
+    private long fmix64(long k) {
         k ^= k >>> 33;
         k *= 0xff51afd7ed558ccdL;
         k ^= k >>> 33;
@@ -129,7 +132,7 @@ public final class RoutingService {
         return k;
     }
 
-    public static int getBucketIndex(String key, int numBuckets) {
+    public int getBucketIndex(String key, int numBuckets) {
         return jumpConsistentHash(key, numBuckets);
     }
 }

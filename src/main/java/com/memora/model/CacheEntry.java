@@ -1,7 +1,5 @@
 package com.memora.model;
 
-import java.util.Objects;
-
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;

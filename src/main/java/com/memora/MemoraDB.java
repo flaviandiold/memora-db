@@ -1,32 +1,61 @@
 package com.memora;
 
-
-import com.memora.constants.ThreadPool;
 import com.memora.core.MemoraNode;
-import com.memora.services.ThreadPoolService;
+
+import static com.google.inject.Guice.createInjector;
+
+import com.google.inject.Inject;
+import com.google.inject.Stage;
+import com.memora.core.MemoraServer;
+import com.memora.modules.EnvironmentModule;
+import com.memora.modules.MemoraModule;
+import com.memora.modules.ServiceModule;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MemoraDB {
 
-    public static void main(String[] args) {    
-        for (ThreadPool pool: ThreadPool.getThreadPool()) {
-            if (!pool.isCluster()) {
-                ThreadPoolService.createThreadPool(pool);
-            }
+    @Inject
+    public MemoraDB(MemoraNode node, MemoraServer server) {
+        initiate(node, server);
+    }
+
+    public static void main(String[] args) {
+        try {
+            createInjector(
+                    Stage.PRODUCTION,
+                    new EnvironmentModule(),
+                    new MemoraModule(),
+                    new ServiceModule()
+            );
+    
+            Thread.currentThread().join();
+        } catch (Exception e) {
+            log.error("Error starting MemoraDB: {}", e.getMessage());
         }
+    }
 
-        MemoraNode.start();
+    private void initiate(MemoraNode node, MemoraServer server) {
+        try {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    node.stop();
+                    server.close();
+                } catch (Exception e) {
+                    log.error("Error during node shutdown: {}", e.getMessage());
+                }
+            }));
 
-
-        // Add a shutdown hook for graceful termination
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                MemoraNode.stop();
-            } catch (Exception e) {
-                log.error("Error during node shutdown: {}", e.getMessage());
-            }
-        }));
+            log.info("Starting MemoraDB...");
+            node.start();
+            server.start();
+            log.info("MemoraDB started successfully.");
+        } catch (InterruptedException e) {
+            log.error("MemoraDB startup interrupted: {}", e.getMessage());
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.error("Error starting MemoraDB: {}", e.getMessage());
+        }
     }
 }

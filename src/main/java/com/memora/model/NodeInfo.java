@@ -3,7 +3,6 @@ package com.memora.model;
 import java.io.Serializable;
 import java.util.Objects;
 
-import lombok.Builder;
 import lombok.Data;
 
 /**

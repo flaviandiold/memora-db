@@ -1,7 +1,6 @@
 package com.memora.core;
 
 import com.memora.exceptions.RpcException;
-import com.memora.model.RpcResponse;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -24,13 +23,13 @@ public class MemoraClient implements Closeable {
 
     private final String host;
     private final int port;
+    private final int CONNECT_TIMEOUT_MS = 2000;
+    private final ReentrantLock lock = new ReentrantLock();
+    
     private Socket socket;
     private BufferedWriter out;
     private BufferedReader in;
     private boolean closed = false;
-    private final ReentrantLock lock = new ReentrantLock();
-
-    private static final int CONNECT_TIMEOUT_MS = 2000;
 
     public MemoraClient(String host, int port) throws IOException {
         this.host = host;

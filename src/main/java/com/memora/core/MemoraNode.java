@@ -1,68 +1,47 @@
 package com.memora.core;
 
-import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
+import com.google.inject.Inject;
+import com.google.inject.name.Named;
+import com.memora.constants.Constants;
 import com.memora.constants.NodeType;
 import com.memora.model.NodeInfo;
-import com.memora.modules.EnvironmentModule;
-import com.memora.services.BucketManager;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MemoraNode {
     private final NodeInfo info;
-    private final MemoraServer server;
-
-    private static final AtomicLong nodeVersion = new AtomicLong(1);
-    private static final MemoraNode INSTANCE = new MemoraNode();
-
+    
     private NodeType nodeType;
     private List<NodeInfo> replicaNodes;
     private List<NodeInfo> inSyncReplicas;
 
-    private MemoraNode() {
-        String nodeId = EnvironmentModule.getNodeId();
-        String host = EnvironmentModule.getHost();
-        int port = EnvironmentModule.getPort();
+    @Inject
+    public MemoraNode(
+        @Named(Constants.NODE_ID) String nodeId,
+        @Named(Constants.NODE_HOST) String host,
+        @Named(Constants.NODE_PORT) int port
+    ) {
         this.info = NodeInfo.create(nodeId, host, port);
         log.info("Node initialized with ID: {}, Host: {}, Port: {}", nodeId, host, port);
+    }
     
-        int numberOfBuckets = EnvironmentModule.getNumberOfBuckets();
-        BucketManager.buildBuckets(numberOfBuckets);
-        server = new MemoraServer(host, port);
-
+    public void start() {
         nodeType = NodeType.STANDALONE;
+        log.info("Starting Memora Node...");
     }
     
-    public static void start() {
-        try (INSTANCE.server) {
-            INSTANCE.server.start();
-        } catch (Exception e) {
-            log.error("Error starting MemoraServer: {}", e.getMessage());
-        }
-    }
-    
-    public static void stop() {
-        try {
-            INSTANCE.server.close();
-        } catch (IOException e) {
-
-        }
+    public void stop() {
+        log.info("Stopping Memora Node");
     }
 
-    public static void clearInSyncReplicas() {
-        if (INSTANCE.nodeType == NodeType.PRIMARY) INSTANCE.inSyncReplicas.clear();
+    public void clearInSyncReplicas() {
+        if (NodeType.PRIMARY.equals(nodeType)) inSyncReplicas.clear();
     }
 
-    public static void incrementVersion() {
-        nodeVersion.incrementAndGet();
-        clearInSyncReplicas();
-    }
-
-    public static long getVersion() {
-        return nodeVersion.get();
+    public void replicate(String host, int port) {
+        nodeType = NodeType.REPLICA;
     }
 }

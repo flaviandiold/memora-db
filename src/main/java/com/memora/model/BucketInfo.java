@@ -3,7 +3,6 @@ package com.memora.model;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Immutable class representing bucket information in Memora DB.

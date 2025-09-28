@@ -2,10 +2,10 @@ package com.memora.core;
 
 import java.io.IOException;
 
-import com.memora.commands.Command;
+import com.google.inject.Inject;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
-import com.memora.services.BucketManager;
+import com.memora.services.CommandExecutor;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -28,18 +28,19 @@ public class MemoraServer implements AutoCloseable {
 
     private final String host;
     private final int port;
-    private final MemoraServer server;
-    private final BucketManager bucketManager;
+    private final Version version;
+    private final CommandExecutor commandExecutor;
 
     private Channel serverChannel;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
-    public MemoraServer(String host, int port) {
+    @Inject
+    public MemoraServer(String host, int port, CommandExecutor commandExecutor, Version version) {
         this.host = host;
         this.port = port;
-        this.server = this;
-        this.bucketManager = BucketManager.getInstance();
+        this.commandExecutor = commandExecutor;
+        this.version = version;
     }
 
     public void start() throws InterruptedException {
@@ -69,10 +70,11 @@ public class MemoraServer implements AutoCloseable {
                                     }
                                     String operation = request.substring(0, idx);
                                     RpcRequest rpcRequest = RpcRequest.builder()
-                                            .version(MemoraNode.getVersion())
+                                            .operation(operation)
+                                            .version(version.get())
                                             .command(request)
                                             .build();
-                                    RpcResponse response = Command.commandOf(operation).execute(rpcRequest);
+                                    RpcResponse response = commandExecutor.execute(rpcRequest);
                                     ctx.writeAndFlush(response.toString());
                                 }
                             });

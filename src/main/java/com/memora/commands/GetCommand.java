@@ -2,11 +2,24 @@ package com.memora.commands;
 
 import java.util.Objects;
 
+import com.google.inject.Inject;
 import com.memora.model.CacheEntry;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
+import com.memora.services.BucketManager;
 
-public class GetCommand extends Command {
+public class GetCommand extends Operation {
+
+    private static final String GET_COMMAND = "GET";
+
+    private final BucketManager bucketManager;
+
+    @Inject
+    public GetCommand(
+        final BucketManager bucketManager
+    ) {
+        this.bucketManager = bucketManager;
+    }
 
     @Override
     public RpcResponse execute(RpcRequest request) {
@@ -14,6 +27,9 @@ public class GetCommand extends Command {
 
         if (parts.length < 2) {
             return RpcResponse.BAD_REQUEST;
+        }
+        if (!parts[0].equalsIgnoreCase(GET_COMMAND)) {
+            throw new IllegalCallerException("Invalid command for GetCommand");
         }
         String key = parts[1];
         CacheEntry entry = bucketManager.get(key);

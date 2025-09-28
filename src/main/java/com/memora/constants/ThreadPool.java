@@ -17,7 +17,7 @@ public enum ThreadPool {
     private final int size;
     private final boolean isCluster;
 
-    public static List<ThreadPool> getThreadPool() {
+    public static List<ThreadPool> getAllThreadPool() {
         return List.of(ThreadPool.values());
     }
 }

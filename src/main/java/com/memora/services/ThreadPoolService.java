@@ -1,5 +1,6 @@
 package com.memora.services;
 
+import com.google.inject.Inject;
 import com.memora.constants.ThreadPool;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,21 +10,22 @@ import java.util.concurrent.Future;
 
 public class ThreadPoolService {
 
-    private final static ConcurrentHashMap<String, ExecutorService> threadPoolMap;
+    private final ConcurrentHashMap<String, ExecutorService> threadPoolMap;
 
-    static {
+    @Inject
+    public ThreadPoolService() {
         threadPoolMap = new ConcurrentHashMap<>();
     }
 
-    public static void createThreadPool(ThreadPool pool) {
+    public void createThreadPool(ThreadPool pool) {
         createThreadPool(pool.getName(), pool.getSize());
     }
 
-    private static ExecutorService createThreadPool(String name, int size) {
+    private ExecutorService createThreadPool(String name, int size) {
         return threadPoolMap.put(name, Executors.newFixedThreadPool(size));
     }
 
-    public static <T> Future<T> submit(String threadPoolName, Callable<T> task) {
+    public <T> Future<T> submit(String threadPoolName, Callable<T> task) {
         ExecutorService threadPool = threadPoolMap.get(threadPoolName);
         if (threadPool == null) {
             throw new IllegalStateException("Thread pool not found: " + threadPoolName);
@@ -31,7 +33,7 @@ public class ThreadPoolService {
         return threadPool.submit(task);
     }
 
-    public static void submit(String threadPoolName, Runnable task) {
+    public void submit(String threadPoolName, Runnable task) {
         ExecutorService threadPool = threadPoolMap.get(threadPoolName);
         if (threadPool == null) {
             throw new IllegalStateException("Thread pool not found: " + threadPoolName);
@@ -39,11 +41,11 @@ public class ThreadPoolService {
         threadPool.submit(task);
     }
 
-    public static ExecutorService getThreadPool(ThreadPool pool) {
+    public ExecutorService getThreadPool(ThreadPool pool) {
         return threadPoolMap.computeIfAbsent(pool.getName(), k -> createThreadPool(pool.getName(), pool.getSize()));
     }
 
-    public static void shutdown() {
+    public void shutdown() {
         for (ExecutorService threadPool : threadPoolMap.values()) {
             threadPool.shutdown();
         }

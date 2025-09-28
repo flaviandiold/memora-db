@@ -1,11 +1,25 @@
 package com.memora.commands;
 
-import com.memora.core.MemoraNode;
+import com.google.inject.Inject;
+import com.memora.core.Version;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
+import com.memora.services.BucketManager;
 import com.memora.store.WAL;
 
-public class DelCommand extends Command {
+public class DelCommand extends Operation {
+
+    private final BucketManager bucketManager;
+    private final Version version;
+
+    @Inject
+    public DelCommand(
+        final BucketManager bucketManager,
+        final Version version
+    ) {
+        this.bucketManager = bucketManager;
+        this.version = version;
+    }
 
     @Override
     public RpcResponse execute(RpcRequest request) {
@@ -16,7 +30,7 @@ public class DelCommand extends Command {
         }
         String key = parts[1];
         bucketManager.delete(key);
-        MemoraNode.incrementVersion();
+        version.increment();
         return RpcResponse.OK;
     }
 
