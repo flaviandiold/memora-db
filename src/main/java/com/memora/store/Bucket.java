@@ -32,7 +32,6 @@ public class Bucket {
     }
     
     public CacheEntry get(String key) {
-        log.info("Bucket Id {}, Store {}", bucketId, store);
         return store.compute(key, (k, v) -> {
             if (v != null && v.getTtl() != -1 && System.currentTimeMillis() > v.getTtl()) {
                 // Lazy eviction for expired keys

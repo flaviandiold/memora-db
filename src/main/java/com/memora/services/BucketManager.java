@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import com.memora.core.MemoraNode;
 import com.memora.model.BucketInfo;
 import com.memora.model.BucketMap;
+import com.memora.model.CacheEntry;
 import com.memora.modules.EnvironmentModule;
 import com.memora.store.Bucket;
 import com.memora.utils.ULID;
@@ -61,5 +61,20 @@ public class BucketManager {
             bucketInfo.add(BucketInfo.builder().bucketId(bucketId).nodeId(nodeId).build());
         });
         bucketMap.addBuckets(bucketInfo);
+    }
+
+    public CacheEntry get(final String key) {
+        Bucket bucket = getBucket(key);
+        return bucket.get(key);
+    }
+
+    public void put(final String key, final CacheEntry value) {
+        Bucket bucket = getBucket(key);
+        bucket.put(key, value);
+    }
+
+    public void delete(final String key) {
+        Bucket bucket = getBucket(key);
+        bucket.delete(key);
     }
 }

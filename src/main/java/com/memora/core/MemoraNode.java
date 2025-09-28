@@ -1,8 +1,10 @@
 package com.memora.core;
 
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
+import com.memora.constants.NodeType;
 import com.memora.model.NodeInfo;
 import com.memora.modules.EnvironmentModule;
 import com.memora.services.BucketManager;
@@ -13,8 +15,13 @@ import lombok.extern.slf4j.Slf4j;
 public class MemoraNode {
     private final NodeInfo info;
     private final MemoraServer server;
-    private static final AtomicInteger nodeVersion = new AtomicInteger(0);
+
+    private static final AtomicLong nodeVersion = new AtomicLong(1);
     private static final MemoraNode INSTANCE = new MemoraNode();
+
+    private NodeType nodeType;
+    private List<NodeInfo> replicaNodes;
+    private List<NodeInfo> inSyncReplicas;
 
     private MemoraNode() {
         String nodeId = EnvironmentModule.getNodeId();
@@ -26,33 +33,36 @@ public class MemoraNode {
         int numberOfBuckets = EnvironmentModule.getNumberOfBuckets();
         BucketManager.buildBuckets(numberOfBuckets);
         server = new MemoraServer(port);
+
+        nodeType = NodeType.STANDALONE;
     }
     
-    public static MemoraNode getInstance() {
-        return INSTANCE;
-    }
-    
-    public void start() {
-        try (server) {
-            server.start();
+    public static void start() {
+        try (INSTANCE.server) {
+            INSTANCE.server.start();
         } catch (Exception e) {
             log.error("Error starting MemoraServer: {}", e.getMessage());
         }
     }
     
-    public void stop() {
+    public static void stop() {
         try {
-            server.close();
+            INSTANCE.server.close();
         } catch (IOException e) {
 
         }
     }
 
-    public static void incrementVersion() {
-        nodeVersion.incrementAndGet();
+    public static void clearInSyncReplicas() {
+        if (INSTANCE.nodeType == NodeType.PRIMARY) INSTANCE.inSyncReplicas.clear();
     }
 
-    public static Integer getVersion() {
+    public static void incrementVersion() {
+        nodeVersion.incrementAndGet();
+        clearInSyncReplicas();
+    }
+
+    public static long getVersion() {
         return nodeVersion.get();
     }
 }

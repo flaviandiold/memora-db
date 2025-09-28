@@ -1,5 +1,6 @@
 package com.memora;
 
+
 import com.memora.constants.ThreadPool;
 import com.memora.core.MemoraNode;
 import com.memora.services.ThreadPoolService;
@@ -16,13 +17,13 @@ public class MemoraDB {
             }
         }
 
-        MemoraNode node = MemoraNode.getInstance();
-        node.start();
+        MemoraNode.start();
+
 
         // Add a shutdown hook for graceful termination
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                node.stop();
+                MemoraNode.stop();
             } catch (Exception e) {
                 log.error("Error during node shutdown: {}", e.getMessage());
             }
