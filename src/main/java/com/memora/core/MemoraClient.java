@@ -3,8 +3,10 @@ package com.memora.core;
 import com.memora.exceptions.RpcException;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
+
 import java.io.*;
 import java.net.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Simple blocking TCP client for cache RPC calls.
@@ -18,7 +20,7 @@ public class MemoraClient implements Closeable {
     private ObjectOutputStream out;
     private ObjectInputStream in;
     private boolean closed = false;
-    private final Object lock = new Object();
+    private final ReentrantLock lock = new ReentrantLock();
 
     private static final int CONNECT_TIMEOUT_MS = 2000;
 
@@ -46,7 +48,8 @@ public class MemoraClient implements Closeable {
     }
 
     public RpcResponse call(RpcRequest request) throws RpcException {
-        synchronized (lock) {
+        lock.lock();
+        try {
             if (closed) {
                 throw new RpcException("Client is closed.");
             }
@@ -76,17 +79,22 @@ public class MemoraClient implements Closeable {
                 closeQuietly();
                 throw new RpcException("Failed to complete RPC call", e);
             }
+        } finally {
+            lock.unlock();
         }
     }
 
     @Override
     public void close() throws IOException {
-        synchronized (lock) {
+        lock.lock();
+        try {
             if (closed) {
                 return;
             }
             closed = true;
             closeQuietly();
+        } finally {
+            lock.unlock();
         }
     }
 

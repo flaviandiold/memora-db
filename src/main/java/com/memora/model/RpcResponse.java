@@ -3,20 +3,26 @@ package com.memora.model;
 import java.io.Serializable;
 
 import lombok.Builder;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 @Builder
-public record RpcResponse(
-        Status status,
-        Object result
-) implements Serializable {
+public class RpcResponse implements Serializable {
+    public static final RpcResponse OK = new RpcResponse("OK");
+    public static final RpcResponse ERROR = new RpcResponse("ERROR");
+    public static final RpcResponse NOT_FOUND = new RpcResponse("NOT_FOUND");
+    public static final RpcResponse UNSUPPORTED_COMMAND = new RpcResponse("UNSUPPORTED_COMMAND");
 
-    private static final long serialVersionUID = 1L;
+    private final String response;
 
-    public enum Status {
-        OK,
-        ERROR,
-        NOT_FOUND,
-        REDIRECT, // To redirect client to the correct primary
-        PRIMARY_DOWN
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Response='").append(response).append('\'').append('\n');
+        return sb.toString();
+    }
+
+    public String getResponse() {
+        return response;
     }
 }

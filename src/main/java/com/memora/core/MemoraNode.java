@@ -1,31 +1,58 @@
 package com.memora.core;
 
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import com.memora.model.NodeInfo;
 import com.memora.modules.EnvironmentModule;
 import com.memora.services.BucketManager;
-import com.memora.utils.ULID;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class MemoraNode {
-    private final NodeInfo nodeInfo;
-    private final BucketManager bucketManager;
+    private final NodeInfo info;
+    private final MemoraServer server;
+    private static final AtomicInteger nodeVersion = new AtomicInteger(0);
+    private static final MemoraNode INSTANCE = new MemoraNode();
 
-    public MemoraNode() {
-        final String host = EnvironmentModule.getHost();
-        final int port = EnvironmentModule.getPort();
-        nodeInfo = NodeInfo.create(ULID.generate(), host, port);
-        bucketManager = new BucketManager();
+    private MemoraNode() {
+        String nodeId = EnvironmentModule.getNodeId();
+        String host = EnvironmentModule.getHost();
+        int port = EnvironmentModule.getPort();
+        this.info = NodeInfo.create(nodeId, host, port);
+        log.info("Node initialized with ID: {}, Host: {}, Port: {}", nodeId, host, port);
+    
+        int numberOfBuckets = EnvironmentModule.getNumberOfBuckets();
+        BucketManager.buildBuckets(numberOfBuckets);
+        server = new MemoraServer(port);
+    }
+    
+    public static MemoraNode getInstance() {
+        return INSTANCE;
     }
     
     public void start() {
-        System.out.println("MemoraNode started.");
-        try (MemoraServer server = new MemoraServer(this.nodeInfo.port())) {
+        try (server) {
             server.start();
         } catch (Exception e) {
-            System.err.println("Error starting MemoraServer: " + e.getMessage());
+            log.error("Error starting MemoraServer: {}", e.getMessage());
         }
     }
     
     public void stop() {
-        System.out.println("MemoraNode stopped.");
+        try {
+            server.close();
+        } catch (IOException e) {
+
+        }
+    }
+
+    public static void incrementVersion() {
+        nodeVersion.incrementAndGet();
+    }
+
+    public static Integer getVersion() {
+        return nodeVersion.get();
     }
 }

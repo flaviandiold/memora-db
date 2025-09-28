@@ -3,8 +3,6 @@ package com.memora.utils;
 import java.security.SecureRandom;
 import java.time.Instant;
 
-import org.apache.commons.codec.binary.Base32;
-
 public final class ULID {
     private static final SecureRandom secureRandom = new SecureRandom();
     private static final int TIMESTAMP_BITS = 40;
@@ -25,8 +23,7 @@ public final class ULID {
 
     private static String encodeBase32(long value, int totalBits) {
         byte[] bytes = longToBytes(value, (totalBits + 7) / 8);
-        Base32 base32 = new Base32();
-        return base32.encodeAsString(bytes);
+        return Base32.crockfords.format(bytes);
     }
 
     private static byte[] longToBytes(long value, int byteCount) {

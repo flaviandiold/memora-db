@@ -4,9 +4,20 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Objects;
 
+import com.memora.utils.ULID;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public final class EnvironmentModule {
-    private static String nodeId;
-    private static Integer port;
+    private static String nodeId = null;
+
+    public static String getNodeId() {
+        if (Objects.isNull(nodeId)) {
+            nodeId = ULID.generate();
+        }
+        return nodeId;
+    }
 
     public static String getHost() {
         String host = getEnv("NODE_HOST");
@@ -20,14 +31,23 @@ public final class EnvironmentModule {
     }
 
     public static int getPort() {
-        if (!Objects.isNull(port)) return port;
-        return port = Integer.valueOf(getOrDefault("NODE_PORT", "9090"));
+        return Integer.parseInt(getOrDefault("NODE_PORT", "9090"));
     }
 
     private static String getOrDefault(String key, String value) {
         String env = getEnv(key);
         if (Objects.isNull(env)) return value;
         return env;
+    }
+
+    public static int getNumberOfBuckets() {
+        String numberOfBuckets = getEnv("NUMBER_OF_BUCKETS");
+        if (!Objects.isNull(numberOfBuckets)) return Integer.parseInt(numberOfBuckets);
+        double freeMemory = Runtime.getRuntime().freeMemory();
+        int bucketsForMemory = (int) Math.ceil(freeMemory / (1024 * 1024 * 500));
+        if (bucketsForMemory <= 1) return 3;
+        if (bucketsForMemory > 10) return 10;
+        return bucketsForMemory;
     }
 
     private static String getRequiredEnv(String key) {

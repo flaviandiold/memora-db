@@ -4,6 +4,9 @@ import com.memora.constants.ThreadPool;
 import com.memora.core.MemoraNode;
 import com.memora.services.ThreadPoolService;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class MemoraDB {
 
     public static void main(String[] args) {    
@@ -13,7 +16,7 @@ public class MemoraDB {
             }
         }
 
-        MemoraNode node = new MemoraNode();
+        MemoraNode node = MemoraNode.getInstance();
         node.start();
 
         // Add a shutdown hook for graceful termination
@@ -21,7 +24,7 @@ public class MemoraDB {
             try {
                 node.stop();
             } catch (Exception e) {
-                System.err.println("Error during node shutdown: " + e.getMessage());
+                log.error("Error during node shutdown: {}", e.getMessage());
             }
         }));
     }

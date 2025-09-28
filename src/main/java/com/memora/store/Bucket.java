@@ -1,11 +1,11 @@
 package com.memora.store;
 
 import com.memora.model.CacheEntry;
+import com.memora.utils.InsertionOrderMap;
 
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Simple thread-safe in-memory key-value store.
@@ -15,38 +15,32 @@ public class Bucket {
 
     private final String bucketId;
     private final ConcurrentHashMap<String, CacheEntry> store;
-    private final ConcurrentLinkedDeque<String> insertionOrder;
-    private final CacheEntry nullEntry = CacheEntry.builder().value("null").ttl(-1).build();
+    private final InsertionOrderMap<String> insertionOrder;
 
-    public Bucket(String bucketId, int capacity) {
+    public Bucket(String bucketId) {
         this.bucketId = bucketId;
         // Set initial capacity and load factor to prevent rehashes
-        this.store = new ConcurrentHashMap<>();
-        this.insertionOrder = new ConcurrentLinkedDeque<>();
+        this.store = new ConcurrentHashMap<>(1000, 0.8f);
+        this.insertionOrder = new InsertionOrderMap<>();
     }
 
-    public void put(String key, CacheEntry value) {
-        if (store.put(key, value) == null) {
-            // Only add to insertion queue if it's a new key
-            insertionOrder.addLast(key);
-        }
-        log.info("Store {}", store);
+    public void put(final String key, final CacheEntry value) {
+        store.compute(key, (k, v) -> {
+            insertionOrder.put(key);
+            return value;
+        });
     }
     
     public CacheEntry get(String key) {
-        log.info("Store {}", store);
-        CacheEntry entry = store.get(key);
-        System.out.println("Bucket " + bucketId + ": Accessed key " + key + " with value " + entry);
-        if (entry != null && entry.ttl() != -1 && System.currentTimeMillis() > entry.ttl()) {
-            // Lazy eviction for expired keys
-            store.remove(key);
-            insertionOrder.remove(key); // This is an O(n) operation, can be slow
-            return nullEntry;
-        }
-        if (entry == null) {
-            return nullEntry;
-        }
-        return entry;
+        log.info("Bucket Id {}, Store {}", bucketId, store);
+        return store.compute(key, (k, v) -> {
+            if (v != null && v.getTtl() != -1 && System.currentTimeMillis() > v.getTtl()) {
+                // Lazy eviction for expired keys
+                insertionOrder.remove(key);
+                return null;
+            }
+            return v;
+        });
     }
 
     public void delete(String key) {
@@ -55,7 +49,7 @@ public class Bucket {
     }
 
     private void evict() {
-        String keyToEvict = insertionOrder.pollLast();
+        String keyToEvict = insertionOrder.getMostRecentKey();
         if (keyToEvict != null) {
             store.remove(keyToEvict);
             System.out.println("Bucket " + bucketId + ": Evicted key " + keyToEvict);

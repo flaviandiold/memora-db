@@ -1,14 +1,12 @@
 package com.memora.core;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Objects;
 
-import com.memora.constants.ThreadPool;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.model.CacheEntry;
 import com.memora.services.BucketManager;
-import com.memora.services.ThreadPoolService;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -22,7 +20,6 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import lombok.extern.slf4j.Slf4j;
@@ -31,19 +28,20 @@ import lombok.extern.slf4j.Slf4j;
 public class MemoraServer implements AutoCloseable {
 
     private final int port;
+    private final MemoraServer server;
+    private final BucketManager bucketManager;
+
     private Channel serverChannel;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
-    private MemoraServer server;
-    private final BucketManager bucketManager;
 
 
     public MemoraServer(int port) {
         this.port = port;
-        this.bucketManager = new BucketManager();
         this.server = this;
+        this.bucketManager = BucketManager.getInstance();
     }
-
+    
     public void start() throws InterruptedException {
         // ThreadPool serverPool = ThreadPool.SERVER_THREAD_POOL;
         bossGroup = new NioEventLoopGroup(); // accepts incoming connections
@@ -66,11 +64,13 @@ public class MemoraServer implements AutoCloseable {
                                     log.info("Received request: '{}'", request);
                                     String[] parts = request.split(" ");
                                     RpcRequest rpcRequest = RpcRequest.builder()
-                                            .commandType(RpcRequest.CommandType.valueOf(parts[0].toUpperCase()))
-                                            .args(List.of(parts).subList(1, parts.length))
+                                            .commandType(RpcRequest.commandOf(parts[0]))
+                                            .key(parts.length > 1 ? parts[1] : null)
+                                            .value(parts.length > 2 ? parts[2] : null)
+                                            .version(MemoraNode.getVersion())
                                             .build();
                                     RpcResponse response = server.handler(rpcRequest);
-                                    ctx.writeAndFlush(response.toString() + "\n");
+                                    ctx.writeAndFlush(response.toString());
                                 }
                             });
                         }
@@ -80,7 +80,7 @@ public class MemoraServer implements AutoCloseable {
 
             ChannelFuture future = bootstrap.bind(port).sync();
             serverChannel = future.channel();
-            System.out.println("Netty RPC Server started on port " + port);
+            log.info("Memora Server started on port ", port);
 
             future.channel().closeFuture().sync();
         } finally {
@@ -89,21 +89,32 @@ public class MemoraServer implements AutoCloseable {
         }
     }
 
-    private RpcResponse handler(RpcRequest request) {
+    private RpcResponse handler(final RpcRequest request) {
         log.info("Handling request: {}", request);
-        String result = switch (request.commandType()) {
+        final String key = request.key();
+        boolean isSelf = bucketManager.isInSelf(key);
+        if (!isSelf) return RpcResponse.UNSUPPORTED_COMMAND;
+        RpcResponse result = switch (request.commandType()) {
             case PUT -> {
-                bucketManager.getBucket().put(request.args().get(0), CacheEntry.builder().value(request.args().get(1)).ttl(-1).build());
-                yield "OK";
+                bucketManager.getBucket(request.key()).put(key, CacheEntry.builder().value(request.value()).ttl(-1).build());
+                MemoraNode.incrementVersion();
+                yield RpcResponse.OK;
             }
-            case GET -> bucketManager.getBucket().get(request.args().get(0)).value();
+            case GET -> {
+                CacheEntry entry = bucketManager.getBucket(key).get(key);
+                if (Objects.isNull(entry)) {
+                    yield RpcResponse.NOT_FOUND;
+                } else {
+                    yield RpcResponse.builder().response(entry.getValue()).build();
+                }
+            }
             case DELETE -> {
-                bucketManager.getBucket().delete(request.args().get(0));
-                yield "OK";
+                bucketManager.getBucket(key).delete(key);
+                yield RpcResponse.OK;
             }
-            default -> "Unsupported command";
+            default -> RpcResponse.UNSUPPORTED_COMMAND;
         };
-        return RpcResponse.builder().status(RpcResponse.Status.OK).result(result).build();
+        return result;
     }
 
     @Override
@@ -117,6 +128,6 @@ public class MemoraServer implements AutoCloseable {
         if (bossGroup != null) {
             bossGroup.shutdownGracefully();
         }
-        System.out.println("Netty RPC Server stopped.");
+        log.info("Memora Server stopped.");
     }
 }

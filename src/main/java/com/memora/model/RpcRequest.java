@@ -1,19 +1,30 @@
 package com.memora.model;
 
 import java.io.Serializable;
-import java.util.List;
 
 import lombok.Builder;
 
 @Builder
 public record RpcRequest(
         CommandType commandType,
-        List<String> args,
+        String key,
+        String value,
         long version // Used for replication
 ) implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    public RpcRequest(CommandType commandType, String key) {
+        this(commandType, key, null, -1);
+    }
+
+    public RpcRequest(CommandType commandType, String key, String value) {
+        this(commandType, key, value, -1);
+    }
+
+    public RpcRequest(CommandType commandType, String key, long version) {
+        this(commandType, key, null, version);
+    }
     public enum CommandType {
         // Client commands
         PUT,
@@ -22,10 +33,16 @@ public record RpcRequest(
         // Internal/Cluster commands
         GOSSIP,
         REPLICATE,
-        REQUEST_WAL_SYNC
+        REQUEST_WAL_SYNC,
+        UNKNOWN
     }
 
-    public RpcRequest(CommandType commandType, List<String> args) {
-        this(commandType, args, -1); // Default version for client requests
+    public static CommandType commandOf(String command) {
+        for (CommandType cmd: CommandType.values()) {
+            if (cmd.name().equalsIgnoreCase(command)) {
+                return cmd;
+            }
+        }
+        return CommandType.UNKNOWN;
     }
 }
