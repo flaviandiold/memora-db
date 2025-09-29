@@ -31,6 +31,6 @@ public class ReplicateOperation extends Operation {
 
         memoraNode.replicate(parts[1], Integer.parseInt(parts[2]));
 
-        return null;
+        return RpcResponse.OK;
     }
 }

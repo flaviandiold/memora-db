@@ -19,7 +19,7 @@ public class RpcResponse implements Serializable {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Response='").append(response).append('\'').append('\n');
+        sb.append("Response='").append(response).append('\'');
         return sb.toString();
     }
 

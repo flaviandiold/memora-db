@@ -5,8 +5,10 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.memora.core.MemoraNode;
 import com.memora.core.Version;
+import com.memora.model.NodeInfo;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
+import com.memora.operations.InfoOperation;
 import com.memora.operations.PutOperation;
 import com.memora.operations.ReplicateOperation;
 import com.memora.operations.UnknownOperation;
@@ -47,6 +49,15 @@ public class CommandModule extends AbstractModule {
     ) {
         return new ReplicateOperation(memoraNode);
     }
+
+    @Provides
+    @Singleton
+    public InfoOperation provideInfoOperation(
+            final NodeInfo nodeInfo
+    ) {
+        return new InfoOperation(nodeInfo);
+    }
+
 
     @Provides
     @Singleton

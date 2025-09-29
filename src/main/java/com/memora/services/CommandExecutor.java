@@ -8,6 +8,7 @@ import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
+import com.memora.operations.InfoOperation;
 import com.memora.operations.Operation;
 import com.memora.operations.PutOperation;
 import com.memora.operations.ReplicateOperation;
@@ -26,6 +27,7 @@ public class CommandExecutor {
             final GetOperation getCommand,
             final DelOperation delCommand,
             final ReplicateOperation replicateCommand,
+            final InfoOperation infoCommand,
             final UnknownOperation unknownCommand
     ) {
         commands = Map.of(
@@ -33,14 +35,20 @@ public class CommandExecutor {
                 Operations.GET, getCommand,
                 Operations.DELETE, delCommand,
                 Operations.REPLICATE, replicateCommand,
+                Operations.INFO, infoCommand,
                 Operations.UNKNOWN, unknownCommand
         );
 
     }
 
     public RpcResponse execute(RpcRequest request) {
-        log.info("Executing request: {}", request);
-        Operations operation = Operation.commandOf(request.operation());
-        return commands.get(operation).execute(request);
+        try {
+            log.info("Executing request: {}", request);
+            Operations operation = Operation.commandOf(request.operation());
+            return commands.get(operation).execute(request);
+        } catch (Exception e) {
+            log.error("Error executing request: {}", request, e);
+            return RpcResponse.ERROR;
+        }
     }
 }

@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 
 import com.google.inject.Inject;
 
-public final class RoutingService {
+public class RoutingService {
 
 
     @Inject

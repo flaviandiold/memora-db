@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 @Builder
 @Data
 @RequiredArgsConstructor
-public final class CacheEntry {
+public class CacheEntry {
 
     private final String value;
     private final long version;

@@ -19,6 +19,8 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import lombok.extern.slf4j.Slf4j;
@@ -28,19 +30,17 @@ public class MemoraServer implements AutoCloseable {
 
     private final String host;
     private final int port;
-    private final Version version;
-    private final CommandExecutor commandExecutor;
+    private final MemoraChannel memoraChannel;
 
     private Channel serverChannel;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
     @Inject
-    public MemoraServer(String host, int port, CommandExecutor commandExecutor, Version version) {
+    public MemoraServer(String host, int port, MemoraChannel memoraChannel) {
         this.host = host;
         this.port = port;
-        this.commandExecutor = commandExecutor;
-        this.version = version;
+        this.memoraChannel = memoraChannel;
     }
 
     public void start() throws InterruptedException {
@@ -52,34 +52,7 @@ public class MemoraServer implements AutoCloseable {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        public void initChannel(SocketChannel ch) {
-                            ChannelPipeline pipeline = ch.pipeline();
-                            pipeline.addLast(new StringDecoder()); // decode bytes to String
-                            pipeline.addLast(new StringEncoder()); // encode String to bytes
-                            pipeline.addLast(new SimpleChannelInboundHandler<String>() {
-                                @Override
-                                public void channelRead0(ChannelHandlerContext ctx, String request) {
-                                    request = request.trim();
-                                    log.info("Received request: '{}'", request);
-                                    int idx = request.indexOf(' ');
-                                    if (idx == -1) {
-                                        ctx.writeAndFlush(RpcResponse.BAD_REQUEST.toString());
-                                        return;
-                                    }
-                                    String operation = request.substring(0, idx);
-                                    RpcRequest rpcRequest = RpcRequest.builder()
-                                            .operation(operation)
-                                            .version(version.get())
-                                            .command(request)
-                                            .build();
-                                    RpcResponse response = commandExecutor.execute(rpcRequest);
-                                    ctx.writeAndFlush(response.toString());
-                                }
-                            });
-                        }
-                    })
+                    .childHandler(memoraChannel)
                     .option(ChannelOption.SO_BACKLOG, 128)
                     .childOption(ChannelOption.SO_KEEPALIVE, true);
 

@@ -1,6 +1,7 @@
 package com.memora.core;
 
 import com.memora.exceptions.RpcException;
+import com.memora.utils.Parser;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,6 +14,8 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.concurrent.locks.ReentrantLock;
+
+import com.memora.model.RpcResponse;
 
 /**
  * Simple blocking TCP client for cache RPC calls.
@@ -54,7 +57,7 @@ public class MemoraClient implements Closeable {
         }
     }
 
-    public String call(String request) throws RpcException {
+    public RpcResponse call(String request) throws RpcException {
         lock.lock();
         try {
             if (closed) {
@@ -73,7 +76,7 @@ public class MemoraClient implements Closeable {
 
                 String responseObject = in.readLine();
                 System.out.println("CLIENT received " + responseObject + " from " + host + ":" + port);
-                return responseObject;
+                return Parser.fromJson(responseObject, RpcResponse.class);
             } catch (IOException e) {
                 // This indicates a connection or serialization error, which is critical.
                 System.err.printf("CLIENT error during call to %s:%d. Error: %s%n", host, port, e.getMessage());

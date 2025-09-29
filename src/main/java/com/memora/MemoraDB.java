@@ -7,6 +7,7 @@ import static com.google.inject.Guice.createInjector;
 import com.google.inject.Inject;
 import com.google.inject.Stage;
 import com.memora.core.MemoraServer;
+import com.memora.modules.CommandModule;
 import com.memora.modules.EnvironmentModule;
 import com.memora.modules.MemoraModule;
 import com.memora.modules.ServiceModule;
@@ -27,6 +28,7 @@ public class MemoraDB {
                     Stage.PRODUCTION,
                     new EnvironmentModule(),
                     new MemoraModule(),
+                    new CommandModule(),
                     new ServiceModule()
             );
     

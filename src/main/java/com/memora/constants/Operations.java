@@ -5,6 +5,7 @@ public enum Operations {
     GET("GET"),
     DELETE("DELETE"),
     REPLICATE("REPLICATE"),
+    INFO("INFO"),
     UNKNOWN("UNKNOWN");
 
     private final String operation;

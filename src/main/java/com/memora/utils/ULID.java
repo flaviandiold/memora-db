@@ -3,7 +3,7 @@ package com.memora.utils;
 import java.security.SecureRandom;
 import java.time.Instant;
 
-public final class ULID {
+public class ULID {
     private static final SecureRandom secureRandom = new SecureRandom();
     private static final int TIMESTAMP_BITS = 40;
     private static final int RANDOM_BITS = 24;

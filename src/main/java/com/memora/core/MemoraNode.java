@@ -1,12 +1,16 @@
 package com.memora.core;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.inject.Inject;
-import com.google.inject.name.Named;
-import com.memora.constants.Constants;
 import com.memora.constants.NodeType;
+import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
+import com.memora.model.RpcResponse;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -14,23 +18,27 @@ import lombok.extern.slf4j.Slf4j;
 public class MemoraNode {
     private final NodeInfo info;
     
+    private final List<String> inSyncReplicas;
+    private final ClusterMap clusterMap;
+    private final Map<String, MemoraClient> clientMap;
+    
     private NodeType nodeType;
-    private List<NodeInfo> replicaNodes;
-    private List<NodeInfo> inSyncReplicas;
 
     @Inject
     public MemoraNode(
-        @Named(Constants.NODE_ID) String nodeId,
-        @Named(Constants.NODE_HOST) String host,
-        @Named(Constants.NODE_PORT) int port
+        NodeInfo nodeInfo
     ) {
-        this.info = NodeInfo.create(nodeId, host, port);
-        log.info("Node initialized with ID: {}, Host: {}, Port: {}", nodeId, host, port);
+        this.info = nodeInfo;
+        this.inSyncReplicas = new ArrayList<>();
+        this.clusterMap = new ClusterMap(0);
+        this.clientMap = new HashMap<>();
+        log.info("Node initialized with ID: {}, Host: {}, Port: {}", info.getNodeId(), info.getHost(), info.getPort());
     }
     
     public void start() {
-        nodeType = NodeType.STANDALONE;
         log.info("Starting Memora Node...");
+        nodeType = NodeType.STANDALONE;
+        this.clusterMap.addPrimary(info);
     }
     
     public void stop() {
@@ -42,6 +50,18 @@ public class MemoraNode {
     }
 
     public void replicate(String host, int port) {
-        nodeType = NodeType.REPLICA;
+        try {
+            nodeType = NodeType.REPLICA;
+            
+            MemoraClient client = new MemoraClient(host, port);
+            RpcResponse response = client.call("INFO NODE ID");
+            log.info("Response {}", response);
+            // clusterMap.removePrimary(info);
+            // clientMap.put(host + ":" + port, client);
+        } catch (IOException | RuntimeException e) {
+            log.error("Failed to replicate to {}:{}", host, port);
+            throw new RuntimeException(e);
+        }
+        
     }
 }

@@ -9,14 +9,14 @@ import java.util.TreeSet;
 import lombok.Data;
 
 @Data
-public final class BucketMap {
+public class BucketMap {
 
     private int numberOfActiveBuckets;
+    private List<BucketInfo> allBuckets;
     private final ConcurrentHashMap<String, TreeSet<String>> nodeToBucketsMap = new ConcurrentHashMap<>();
     private final PriorityBlockingQueue<BucketInfo> bucketInfoList = new PriorityBlockingQueue<>(60, (a, b) -> {
         return a.getBucketId().compareTo(b.getBucketId());
     });
-    private List<BucketInfo> allBuckets;
 
     public void increaseNumberOfActiveBuckets(int incrementBy) {
         numberOfActiveBuckets += incrementBy;

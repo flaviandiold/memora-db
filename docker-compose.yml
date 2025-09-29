@@ -11,15 +11,15 @@ services:
         aliases:
           - node1
 
-  # node2:
-  #   build: .
-  #   container_name: memora-node2
-  #   ports:
-  #     - "9090:9090"
-  #   networks:
-  #     memoranet:
-  #       aliases:
-  #         - node2
+  node2:
+    build: .
+    container_name: memora-node2
+    ports:
+      - "9091:9090"
+    networks:
+      memoranet:
+        aliases:
+          - node2
 
   # node3:
   #   build: .

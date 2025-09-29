@@ -6,25 +6,41 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.MemoraDB;
 import com.memora.constants.Constants;
+import com.memora.core.MemoraChannel;
 import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
 import com.memora.core.Version;
+import com.memora.model.NodeInfo;
 import com.memora.services.CommandExecutor;
 
 public class MemoraModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public MemoraNode provideMemoraNode(
+    public NodeInfo provideNodeInfo(            
             @Named(Constants.NODE_ID) String nodeId,
             @Named(Constants.NODE_HOST) String host,
             @Named(Constants.NODE_PORT) int port
     ) {
-        return new MemoraNode(
-                nodeId,
-                host,
-                port
-        );
+        return NodeInfo.create(nodeId, host, port);
+    }
+
+
+    @Provides
+    @Singleton
+    public MemoraNode provideMemoraNode(
+        final NodeInfo nodeInfo
+    ) {
+        return new MemoraNode(nodeInfo);
+    }
+
+    @Provides
+    @Singleton
+    public MemoraChannel provideMemoraChannel(
+        final Version version,
+        final CommandExecutor executor
+    ){
+        return new MemoraChannel(version, executor);
     }
 
     @Provides
@@ -32,10 +48,9 @@ public class MemoraModule extends AbstractModule {
     public MemoraServer provideMemoraServer(
             @Named(Constants.NODE_HOST) String host,
             @Named(Constants.NODE_PORT) int port,
-            CommandExecutor executor,
-            Version version
+            final MemoraChannel channel
     ) {
-        return new MemoraServer(host, port, executor, version);
+        return new MemoraServer(host, port, channel);
     }
 
     @Provides

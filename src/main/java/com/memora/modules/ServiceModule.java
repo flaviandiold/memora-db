@@ -8,6 +8,7 @@ import com.memora.constants.Constants;
 import com.memora.constants.ThreadPool;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
+import com.memora.operations.InfoOperation;
 import com.memora.operations.PutOperation;
 import com.memora.operations.ReplicateOperation;
 import com.memora.operations.UnknownOperation;
@@ -47,6 +48,7 @@ public class ServiceModule extends AbstractModule {
             final GetOperation getCommand,
             final DelOperation delCommand,
             final UnknownOperation unknownCommand,
+            final InfoOperation infoCommand,
             final ReplicateOperation replicateCommand
     ) {
         return new CommandExecutor(
@@ -54,6 +56,7 @@ public class ServiceModule extends AbstractModule {
                 getCommand,
                 delCommand,
                 replicateCommand,
+                infoCommand,
                 unknownCommand
         );
     }

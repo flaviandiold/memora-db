@@ -1,6 +1,6 @@
 package com.memora.constants;
 
-public final class Constants {
+public class Constants {
     private Constants() {}
 
 

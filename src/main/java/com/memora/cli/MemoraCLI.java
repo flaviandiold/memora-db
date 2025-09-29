@@ -3,6 +3,7 @@ package com.memora.cli;
 import java.util.Scanner;
 
 import com.memora.core.MemoraClient;
+import com.memora.model.RpcResponse;
 import com.memora.modules.EnvironmentModule;
 
 /**
@@ -28,7 +29,7 @@ public class MemoraCLI {
                 if ("exit".equalsIgnoreCase(input)) {
                     break;
                 }
-                String result = client.call(input);
+                RpcResponse result = client.call(input);
                 System.out.println(result);
             }
         } catch (Exception e) {
