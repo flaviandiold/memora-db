@@ -3,55 +3,55 @@ package com.memora.modules;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
-import com.memora.commands.DelCommand;
-import com.memora.commands.GetCommand;
-import com.memora.commands.PutCommand;
-import com.memora.commands.ReplicateCommand;
-import com.memora.commands.UnknownCommand;
 import com.memora.core.MemoraNode;
 import com.memora.core.Version;
+import com.memora.operations.DelOperation;
+import com.memora.operations.GetOperation;
+import com.memora.operations.PutOperation;
+import com.memora.operations.ReplicateOperation;
+import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
 
 public class CommandModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public GetCommand provideGetCommand(
+    public GetOperation provideGetOperation(
             final BucketManager bucketManager
     ) {
-        return new GetCommand(bucketManager);
+        return new GetOperation(bucketManager);
     }
 
     @Provides
     @Singleton
-    public PutCommand providePutCommand(
+    public PutOperation providePutOperation(
             final BucketManager bucketManager,
             final Version version
     ) {
-        return new PutCommand(bucketManager, version);
+        return new PutOperation(bucketManager, version);
     }
 
     @Provides
     @Singleton
-    public DelCommand provideDelCommand(
+    public DelOperation provideDelOperation(
             final BucketManager bucketManager,
             final Version version
     ) {
-        return new DelCommand(bucketManager, version);
+        return new DelOperation(bucketManager, version);
     }
 
     @Provides
     @Singleton
-    public ReplicateCommand provideReplicateCommand(
+    public ReplicateOperation provideReplicateOperation(
             final MemoraNode memoraNode
     ) {
-        return new ReplicateCommand(memoraNode);
+        return new ReplicateOperation(memoraNode);
     }
 
     @Provides
     @Singleton
-    public UnknownCommand provideUnknownCommand() {
-        return new UnknownCommand();
+    public UnknownOperation provideUnknownOperation() {
+        return new UnknownOperation();
     }
 
 }

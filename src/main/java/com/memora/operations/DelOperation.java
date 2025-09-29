@@ -1,4 +1,4 @@
-package com.memora.commands;
+package com.memora.operations;
 
 import com.google.inject.Inject;
 import com.memora.core.Version;
@@ -7,13 +7,13 @@ import com.memora.model.RpcResponse;
 import com.memora.services.BucketManager;
 import com.memora.store.WAL;
 
-public class DelCommand extends Operation {
+public class DelOperation extends Operation {
 
     private final BucketManager bucketManager;
     private final Version version;
 
     @Inject
-    public DelCommand(
+    public DelOperation(
         final BucketManager bucketManager,
         final Version version
     ) {

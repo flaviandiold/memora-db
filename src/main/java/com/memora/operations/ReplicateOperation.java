@@ -1,17 +1,17 @@
-package com.memora.commands;
+package com.memora.operations;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraNode;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 
-public class ReplicateCommand extends Operation {
+public class ReplicateOperation extends Operation {
     private static final String REPLICATE_COMMAND = "REPLICATE";
     
     private final MemoraNode memoraNode;
 
     @Inject
-    public ReplicateCommand(
+    public ReplicateOperation(
         final MemoraNode memoraNode
     ) {
         this.memoraNode = memoraNode;

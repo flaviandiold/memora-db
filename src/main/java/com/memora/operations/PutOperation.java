@@ -1,4 +1,4 @@
-package com.memora.commands;
+package com.memora.operations;
 
 import com.google.inject.Inject;
 import com.memora.core.Version;
@@ -8,7 +8,7 @@ import com.memora.model.RpcResponse;
 import com.memora.services.BucketManager;
 import com.memora.store.WAL;
 
-public class PutCommand extends Operation {
+public class PutOperation extends Operation {
 
     private static final String PUT_COMMAND = "PUT";
     private static final String EXPIRY = "EX";
@@ -17,7 +17,7 @@ public class PutCommand extends Operation {
     private final Version version;
 
     @Inject
-    public PutCommand(
+    public PutOperation(
         final BucketManager bucketManager,
         final Version version
     ) {

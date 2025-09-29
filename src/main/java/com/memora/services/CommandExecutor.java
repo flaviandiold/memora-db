@@ -3,15 +3,15 @@ package com.memora.services;
 import java.util.Map;
 
 import com.google.inject.Inject;
-import com.memora.commands.DelCommand;
-import com.memora.commands.GetCommand;
-import com.memora.commands.Operation;
-import com.memora.commands.PutCommand;
-import com.memora.commands.ReplicateCommand;
-import com.memora.commands.UnknownCommand;
 import com.memora.constants.Operations;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
+import com.memora.operations.DelOperation;
+import com.memora.operations.GetOperation;
+import com.memora.operations.Operation;
+import com.memora.operations.PutOperation;
+import com.memora.operations.ReplicateOperation;
+import com.memora.operations.UnknownOperation;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,11 +22,11 @@ public class CommandExecutor {
 
     @Inject
     public CommandExecutor(
-            final PutCommand putCommand,
-            final GetCommand getCommand,
-            final DelCommand delCommand,
-            final ReplicateCommand replicateCommand,
-            final UnknownCommand unknownCommand
+            final PutOperation putCommand,
+            final GetOperation getCommand,
+            final DelOperation delCommand,
+            final ReplicateOperation replicateCommand,
+            final UnknownOperation unknownCommand
     ) {
         commands = Map.of(
                 Operations.PUT, putCommand,

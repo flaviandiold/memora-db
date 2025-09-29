@@ -1,4 +1,4 @@
-package com.memora.commands;
+package com.memora.operations;
 
 import com.memora.constants.Operations;
 import com.memora.model.RpcRequest;

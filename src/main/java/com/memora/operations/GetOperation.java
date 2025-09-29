@@ -1,4 +1,4 @@
-package com.memora.commands;
+package com.memora.operations;
 
 import java.util.Objects;
 
@@ -8,14 +8,14 @@ import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.services.BucketManager;
 
-public class GetCommand extends Operation {
+public class GetOperation extends Operation {
 
     private static final String GET_COMMAND = "GET";
 
     private final BucketManager bucketManager;
 
     @Inject
-    public GetCommand(
+    public GetOperation(
         final BucketManager bucketManager
     ) {
         this.bucketManager = bucketManager;
