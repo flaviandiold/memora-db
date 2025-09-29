@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.inject.Inject;
-import com.memora.constants.NodeType;
+import com.memora.enums.NodeType;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
 import com.memora.model.RpcResponse;

@@ -5,7 +5,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
-import com.memora.constants.ThreadPool;
+import com.memora.enums.ThreadPool;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
 import com.memora.operations.InfoOperation;

@@ -1,6 +1,6 @@
 package com.memora.operations;
 
-import com.memora.constants.Operations;
+import com.memora.enums.Operations;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 

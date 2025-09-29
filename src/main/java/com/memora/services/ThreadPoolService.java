@@ -1,7 +1,8 @@
 package com.memora.services;
 
 import com.google.inject.Inject;
-import com.memora.constants.ThreadPool;
+import com.memora.enums.ThreadPool;
+
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;

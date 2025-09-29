@@ -3,7 +3,7 @@ package com.memora.services;
 import java.util.Map;
 
 import com.google.inject.Inject;
-import com.memora.constants.Operations;
+import com.memora.enums.Operations;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.operations.DelOperation;

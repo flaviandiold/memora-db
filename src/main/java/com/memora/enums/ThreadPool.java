@@ -1,4 +1,4 @@
-package com.memora.constants;
+package com.memora.enums;
 
 import java.util.List;
 
