@@ -10,7 +10,7 @@ import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
 import com.memora.operations.InfoOperation;
 import com.memora.operations.PutOperation;
-import com.memora.operations.ReplicateOperation;
+import com.memora.operations.NodeOperation;
 import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
 import com.memora.services.CommandExecutor;
@@ -49,7 +49,7 @@ public class ServiceModule extends AbstractModule {
             final DelOperation delCommand,
             final UnknownOperation unknownCommand,
             final InfoOperation infoCommand,
-            final ReplicateOperation replicateCommand
+            final NodeOperation replicateCommand
     ) {
         return new CommandExecutor(
                 putCommand,

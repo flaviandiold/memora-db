@@ -4,7 +4,7 @@ public enum Operations {
     PUT("PUT"),
     GET("GET"),
     DELETE("DELETE"),
-    REPLICATE("REPLICATE"),
+    NODE("NODE"),
     INFO("INFO"),
     UNKNOWN("UNKNOWN");
 

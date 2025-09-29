@@ -37,7 +37,7 @@ public class ClusterMap {
         primaries.remove(primary);
     }
 
-    public void addReplicaSet(String primaryId, NodeInfo replica) {
+    public void addReplica(String primaryId, NodeInfo replica) {
         replicaSets.getOrDefault(primaryId, new PriorityBlockingQueue<>(60, getComparator())).add(replica);
     }
 

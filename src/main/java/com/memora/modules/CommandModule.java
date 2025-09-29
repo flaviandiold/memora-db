@@ -10,7 +10,7 @@ import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
 import com.memora.operations.InfoOperation;
 import com.memora.operations.PutOperation;
-import com.memora.operations.ReplicateOperation;
+import com.memora.operations.NodeOperation;
 import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
 
@@ -44,10 +44,10 @@ public class CommandModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public ReplicateOperation provideReplicateOperation(
+    public NodeOperation provideNodeOperation(
             final MemoraNode memoraNode
     ) {
-        return new ReplicateOperation(memoraNode);
+        return new NodeOperation(memoraNode);
     }
 
     @Provides

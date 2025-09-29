@@ -27,10 +27,10 @@ public class InfoOperation extends Operation {
             throw new IllegalArgumentException("Invalid command for InfoCommand: " + command);
         }
         
-        return switch (parts[1]) {
+        return switch (parts[1].toUpperCase()) {
             case NODE_SUB_COMMAND -> {
-                yield switch (parts[2]) {
-                    case ID -> RpcResponse.builder().response(info.getNodeId()).build();
+                yield switch (parts[2].toUpperCase()) {
+                    case ID -> RpcResponse.OK(info.getNodeId());
                     default -> RpcResponse.UNSUPPORTED_OPERATION;
                 };
             }

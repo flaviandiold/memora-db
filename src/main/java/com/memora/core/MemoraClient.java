@@ -89,6 +89,10 @@ public class MemoraClient implements Closeable {
         }
     }
 
+    public RpcResponse getNodeId() {
+        return call("INFO NODE ID");
+    }
+
     @Override
     public void close() throws IOException {
         lock.lock();

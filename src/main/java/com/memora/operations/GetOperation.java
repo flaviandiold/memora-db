@@ -36,7 +36,7 @@ public class GetOperation extends Operation {
         if (Objects.isNull(entry)) {
             return RpcResponse.NOT_FOUND;
         } else {
-            return RpcResponse.builder().response(entry.getValue()).build();
+            return RpcResponse.OK(entry.getValue());
         }
     }
     
