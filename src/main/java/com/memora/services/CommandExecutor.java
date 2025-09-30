@@ -48,7 +48,7 @@ public class CommandExecutor {
             return commands.get(operation).execute(request);
         } catch (Exception e) {
             log.error("Error executing request: {}", request, e);
-            return RpcResponse.ERROR;
+            return RpcResponse.ERROR(e.getLocalizedMessage());
         }
     }
 }

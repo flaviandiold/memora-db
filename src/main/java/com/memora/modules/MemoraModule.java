@@ -1,6 +1,7 @@
 package com.memora.modules;
 
 import com.google.inject.AbstractModule;
+import com.google.inject.Provider;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
@@ -11,6 +12,7 @@ import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
 import com.memora.core.Version;
 import com.memora.model.NodeInfo;
+import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
 
 public class MemoraModule extends AbstractModule {
@@ -29,9 +31,10 @@ public class MemoraModule extends AbstractModule {
     @Provides
     @Singleton
     public MemoraNode provideMemoraNode(
-        final NodeInfo nodeInfo
+        final NodeInfo nodeInfo,
+        final Provider<ClusterOrchestrator> clusterOrchestratorProvider
     ) {
-        return new MemoraNode(nodeInfo);
+        return new MemoraNode(nodeInfo, clusterOrchestratorProvider);
     }
 
     @Provides

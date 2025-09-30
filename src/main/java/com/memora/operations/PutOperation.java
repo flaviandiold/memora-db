@@ -2,6 +2,7 @@ package com.memora.operations;
 
 import com.google.inject.Inject;
 import com.memora.core.Version;
+import com.memora.enums.Operations;
 import com.memora.model.CacheEntry;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
@@ -10,7 +11,7 @@ import com.memora.store.WAL;
 
 public class PutOperation extends Operation {
 
-    private static final String PUT_COMMAND = "PUT";
+    private static final String PUT_COMMAND = Operations.PUT.operation();
     private static final String EXPIRY = "EX";
 
     private final BucketManager bucketManager;
@@ -29,11 +30,12 @@ public class PutOperation extends Operation {
     public RpcResponse execute(RpcRequest request) {
         WAL.log(request);
         String[] parts = request.command().split(" ");
-        if (parts.length < 3) {
-            return RpcResponse.BAD_REQUEST;
-        }
         if (!parts[0].equalsIgnoreCase(PUT_COMMAND)) {
             throw new IllegalCallerException("Invalid command for PutCommand");
+        }
+
+        if (parts.length < 3) {
+            return RpcResponse.BAD_REQUEST("PUT command requires at least 2 arguments");
         }
 
         String key = parts[1];

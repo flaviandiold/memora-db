@@ -1,7 +1,10 @@
 package com.memora.model;
 
 import java.io.Serializable;
+import java.net.InetSocketAddress;
 import java.util.Objects;
+
+import com.memora.enums.NodeType;
 
 import lombok.Data;
 
@@ -17,21 +20,27 @@ public final class NodeInfo implements Serializable {
     private final String nodeId;
     private final String host;
     private final int port;
-    private final long epoch;
-    private final int heartbeatCounter;
-    private final Status status;
-    private final long lastUpdateTime;
+    
+    private NodeType nodeType;
+    private Status status;
+    private long epoch;
+    private int heartbeatCounter;
+    private long lastUpdateTime;
+    
 
     public enum Status {
         ALIVE, SUSPECT, FAILED
     }
 
-    public NodeInfo(String nodeId, String host, int port, long epoch, int heartbeatCounter, Status status, long lastUpdateTime) {
+    public NodeInfo(String nodeId, String host, int port, long epoch, int heartbeatCounter, NodeType nodeType, Status status, long lastUpdateTime) {
+        InetSocketAddress address = new InetSocketAddress(host, port);
+        if (address.isUnresolved()) throw new RuntimeException("Invalid address: " + address);
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId cannot be null");
-        this.host = Objects.requireNonNull(host, "host cannot be null");
-        this.port = port;
+        this.host = address.getAddress().getHostAddress();
+        this.port = address.getPort();
         this.epoch = epoch;
         this.heartbeatCounter = heartbeatCounter;
+        this.nodeType = Objects.requireNonNull(nodeType, "nodeType cannot be null");
         this.status = Objects.requireNonNull(status, "status cannot be null");
         this.lastUpdateTime = lastUpdateTime;
     }
@@ -41,6 +50,10 @@ public final class NodeInfo implements Serializable {
     }
 
     public static NodeInfo create(String nodeId, String host, int port, long epoch, int heartbeatCounter, Status status, long lastUpdateTime) {
-        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, status, lastUpdateTime);
+        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, NodeType.STANDALONE, status, lastUpdateTime);
+    }
+
+    public boolean equals(String host, int port) {
+        return this.host.equals(host) && this.port == port;
     }
 }

@@ -2,6 +2,7 @@ package com.memora.operations;
 
 import com.google.inject.Inject;
 import com.memora.core.Version;
+import com.memora.enums.Operations;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.services.BucketManager;
@@ -11,6 +12,7 @@ public class DelOperation extends Operation {
 
     private final BucketManager bucketManager;
     private final Version version;
+
 
     @Inject
     public DelOperation(
@@ -25,8 +27,11 @@ public class DelOperation extends Operation {
     public RpcResponse execute(RpcRequest request) {
         WAL.log(request);
         String[] parts = request.command().split(" ");
+        if (!parts[0].equalsIgnoreCase(Operations.DELETE.operation())) {
+            throw new IllegalCallerException("Invalid command for DeleteCommand");
+        }
         if (parts.length < 2) {
-            return RpcResponse.BAD_REQUEST;
+            return RpcResponse.BAD_REQUEST("DELETE command requires at least 1 argument");
         }
         String key = parts[1];
         bucketManager.delete(key);

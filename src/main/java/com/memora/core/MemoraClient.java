@@ -18,8 +18,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import com.memora.model.RpcResponse;
 
 /**
- * Simple blocking TCP client for cache RPC calls.
- * Keeps a persistent connection to the server.
+ * Simple blocking TCP client for cache RPC calls. Keeps a persistent connection
+ * to the server.
  */
 @Slf4j
 public class MemoraClient implements Closeable {
@@ -28,7 +28,7 @@ public class MemoraClient implements Closeable {
     private final int port;
     private final int CONNECT_TIMEOUT_MS = 2000;
     private final ReentrantLock lock = new ReentrantLock();
-    
+
     private Socket socket;
     private BufferedWriter out;
     private BufferedReader in;
@@ -41,19 +41,21 @@ public class MemoraClient implements Closeable {
     }
 
     private void connectWithRetry() throws IOException {
-        try {
-            socket = new Socket();
-            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-            socket.setKeepAlive(true);
+        if (socket == null || !socket.isConnected() || socket.isClosed()) {
+            try {
+                socket = new Socket();
+                socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+                socket.setKeepAlive(true);
 
-            // Order is important: create output stream first and flush.
-            out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            out.flush(); // send header immediately
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            log.info("CLIENT connected to {}:{}", host, port);
-        } catch (IOException e) {
-            log.error("CLIENT failed to connect to {}:{}. Error: {}", host, port, e.getMessage());
-            throw e; // Propagate a checked exception
+                // Order is important: create output stream first and flush.
+                out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+                out.flush(); // send header immediately
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                log.info("CLIENT connected to {}:{}", getHost(), getPort());
+            } catch (IOException e) {
+                log.error("CLIENT failed to connect to {}:{}. Error: {}", host, port, e.getMessage());
+                throw e; // Propagate a checked exception
+            }
         }
     }
 
@@ -64,10 +66,7 @@ public class MemoraClient implements Closeable {
                 throw new RpcException("Client is closed.");
             }
             try {
-                if (socket == null || !socket.isConnected() || socket.isClosed()) {
-                    System.err.println("CLIENT disconnected. Attempting to reconnect...");
-                    connectWithRetry();
-                }
+                connectWithRetry();
 
                 System.out.println("CLIENT sending " + request + " to " + host + ":" + port);
                 out.write(request);
@@ -93,6 +92,33 @@ public class MemoraClient implements Closeable {
         return call("INFO NODE ID");
     }
 
+    public RpcResponse primarize(String host, int port) {
+        return call(String.format("NODE PRIMARIZE %s@%d", host, port));
+    }
+
+    public RpcResponse replicate(String host, int port) {
+        return call(String.format("NODE REPLICATE %s@%d", host, port));
+    }
+
+
+    public String getHost() {
+        try {
+            connectWithRetry();
+            return socket.getInetAddress().getHostAddress();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public int getPort() {
+        try {
+            connectWithRetry();
+            return socket.getPort();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Override
     public void close() throws IOException {
         lock.lock();
@@ -109,15 +135,23 @@ public class MemoraClient implements Closeable {
 
     private void closeQuietly() {
         try {
-            if (in != null) in.close();
-        } catch (IOException e) { /* ignore */ }
+            if (in != null) {
+                in.close();
+            }
+        } catch (IOException e) {
+            /* ignore */ }
         try {
-            if (out != null) out.close();
-        } catch (IOException e) { /* ignore */ }
+            if (out != null) {
+                out.close();
+            }
+        } catch (IOException e) {
+            /* ignore */ }
         try {
-            if (socket != null) socket.close();
-        } catch (IOException e) { /* ignore */ }
-        finally {
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            /* ignore */ } finally {
             in = null;
             out = null;
             socket = null;

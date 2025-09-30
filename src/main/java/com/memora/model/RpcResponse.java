@@ -55,6 +55,10 @@ public class RpcResponse implements Serializable {
         return withStatus(RpcRespnseStatus.BAD_REQUEST).response(message).build();
     }
 
+    public static RpcResponse UNSUPPORTED_OPERATION(String message) {
+        return withStatus(RpcRespnseStatus.UNSUPPORTED_OPERATION).response(message).build();
+    }
+
 
     @Override
     public String toString() {

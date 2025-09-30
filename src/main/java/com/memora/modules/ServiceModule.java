@@ -6,6 +6,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
 import com.memora.enums.ThreadPool;
+import com.memora.model.NodeInfo;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
 import com.memora.operations.InfoOperation;
@@ -13,6 +14,7 @@ import com.memora.operations.PutOperation;
 import com.memora.operations.NodeOperation;
 import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
+import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
 import com.memora.services.RoutingService;
 import com.memora.services.ThreadPoolService;
@@ -60,6 +62,13 @@ public class ServiceModule extends AbstractModule {
                 unknownCommand
         );
     }
+
+    @Provides
+    @Singleton
+    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo) {
+        return new ClusterOrchestrator(nodeInfo);
+    }
+
 
     @Provides
     @Singleton

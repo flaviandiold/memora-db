@@ -1,35 +1,35 @@
 version: "3.9"
 
 services:
-  node1:
+  node-1:
     build: .
-    container_name: memora-node1
+    container_name: memora-node-1
     ports:
       - "9090:9090"
     networks:
       memoranet:
         aliases:
-          - node1
+          - node-1
 
-  node2:
+  node-2:
     build: .
-    container_name: memora-node2
+    container_name: memora-node-2
     ports:
       - "9091:9090"
     networks:
       memoranet:
         aliases:
-          - node2
+          - node-2
 
-  # node3:
-  #   build: .
-  #   container_name: memora-node3
-  #   ports:
-  #     - "9090:9090"
-  #   networks:
-  #     memoranet:
-  #       aliases:
-  #         - node3
+  node-3:
+    build: .
+    container_name: memora-node-3
+    ports:
+      - "9092:9090"
+    networks:
+      memoranet:
+        aliases:
+          - node-3
 
 networks:
   memoranet:
