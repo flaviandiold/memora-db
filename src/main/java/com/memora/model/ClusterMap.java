@@ -75,7 +75,9 @@ public class ClusterMap {
     }
 
     public List<NodeInfo> getReplicas(String primaryId) {
-        return primaryToReplicasMap.get(primaryId).stream().map(allNodes::get).toList();
+        PriorityBlockingQueue<String> replicas = primaryToReplicasMap.get(primaryId);
+        if (replicas == null) return List.of();
+        return replicas.stream().map(allNodes::get).toList();
     }
 
     public void incrementEpoch() {

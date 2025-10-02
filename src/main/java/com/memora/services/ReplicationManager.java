@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
+import java.util.function.Function;
 
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
@@ -44,36 +44,36 @@ public class ReplicationManager {
     }
 
     public void put(String key, CacheEntry value) {
-        threadPoolService.submit(pool, () -> {
-            List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
-            replicas.stream().map(replica -> {
-                return threadPoolService.submit(pool, () -> {
-                    return routingService.getOrCreate(replica).put(key, value.getValue(), value.getTtl());
-                });
-            });
+        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        executeAsync(replicas, replica -> {
+            try {
+                return routingService.getOrCreate(replica)
+                        .put(key, value.getValue(), value.getTtl());
+            } catch (Exception e) {
+                return false;
+            }
         });
     }
 
     public void putAll(Map<String, CacheEntry> entries) {
-        threadPoolService.submit(pool, () -> {
-            List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
-            replicas.stream().map(replica -> {
-                return threadPoolService.submit(pool, () -> {
-                    return routingService.getOrCreate(replica).put(entries);
-                });
-            });
+        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        executeAsync(replicas, replica -> {
+            try {
+                return routingService.getOrCreate(replica).put(entries, threadPoolService.getThreadPool(pool));
+            } catch (Exception e) {
+                return false;
+            }
         });
     }
 
     public void delete(String key) {
-        threadPoolService.submit(pool, () -> {
-            List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
-            List<Future<Boolean>> futures = replicas.stream().map(replica -> {
-                return threadPoolService.submit(pool, () -> {
-                    return routingService.getOrCreate(replica).delete(key);
-                });
-            })
-                    .toList();
+        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        executeAsync(replicas, replica -> {
+            try {
+                return routingService.getOrCreate(replica).delete(key);
+            } catch (Exception e) {
+                return false;
+            }
         });
     }
 
@@ -83,37 +83,53 @@ public class ReplicationManager {
 
         List<Bucket> buckets = bucketManager.getSelfBuckets();
 
-        List<CompletableFuture<Boolean>> futures = buckets.stream()
-                .map(bucket -> CompletableFuture.supplyAsync(() -> {
+        executeAsync(buckets, bucket -> {
             log.info("Replicating bucket {}", bucket.getId());
             return bucket.stream(client, threadPoolService.getThreadPool(pool));
-        }, threadPoolService.getThreadPool(pool))).toList();
-
-        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-                .thenRun(() -> {
-                // This block runs only after all bucket streams are done.
-                // We check if any of them failed or returned false.
-                    boolean allBucketsSynced = futures.stream()
-                            .allMatch(future -> {
-                // Check for exceptions first to avoid re-throwing with join()
-                                if (future.isCompletedExceptionally()) {
-                                    return false;
-                                }
-                // Get the result of the completed future.
-                                return future.join();
-                            });
-
-                    if (allBucketsSynced) {
-                        clusterMap.addReplica(currentNode.getNodeId(), replica);
-                        log.info("Replication to {} completed successfully.", replica.getNodeId());
-                    } else {
-                        log.error("Replication to {} failed for one or more buckets.", replica.getNodeId());
-                    }
-                }).exceptionally(ex -> {
-            // This will catch any exceptions from the async pipeline itself.
-            log.error("An unexpected error occurred during replication: {}", ex.getMessage());
+        }).thenAccept(success -> {
+            if (success) {
+                clusterMap.addReplica(currentNode.getNodeId(), replica);
+            }
+        })
+        .exceptionally(ex -> {
+            log.error("Replication failed with an exception. {}", ex);
             return null;
         });
+    }
+
+    private <T> CompletableFuture<Boolean> executeAsync(List<T> data, Function<T, Boolean> task) {
+        if (data == null || data.isEmpty()) {
+            log.warn("No data provided for async operation '{}', completing as success.");
+            return CompletableFuture.completedFuture(true);
+        }
+
+        List<CompletableFuture<Boolean>> futures = data.stream()
+            .map(item -> CompletableFuture.supplyAsync(
+                () -> task.apply(item),
+                threadPoolService.getThreadPool(pool)
+            ))
+            .toList();
+
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+            .thenApply(v -> { // Use thenApply to return the final boolean result
+                boolean allSucceeded = futures.stream()
+                    .allMatch(future -> {
+                        if (future.isCompletedExceptionally()) return false;
+                        return future.join();
+                    });
+
+                if (allSucceeded) {
+                    log.info("Replication succeeded for all targets.");
+                    // Potential logic: update in-sync replica state here
+                } else {
+                    log.error("Replication failed for one or more targets.");
+                }
+                return allSucceeded;
+            })
+            .exceptionally(ex -> {
+                log.error("Replication failed with an exception.", ex);
+                return false; // The operation failed
+            });
     }
 
     public void initiateReplicationOf(NodeInfo primary) throws IOException {
