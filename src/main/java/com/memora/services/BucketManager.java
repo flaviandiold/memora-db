@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Map.Entry;
 import java.util.stream.IntStream;
 
 import com.google.inject.Inject;
@@ -15,15 +17,18 @@ import com.memora.utils.ULID;
 
 public class BucketManager {
 
-    // Must coordinate with routing service as well
-    private final BucketMap bucketMap;
-    private final Map<String, Bucket> buckets;
-    private final String nodeId;
+    private final BucketMap bucketMap; // Contains data of buckets of all nodes
+    private final Map<String, Bucket> buckets; // Contains buckets of current node
 
+    private final String nodeId;
     private final RoutingService routingService;
 
     @Inject
-    public BucketManager(String nodeId, int numberOfBuckets, RoutingService routingService) {
+    public BucketManager(
+        String nodeId,
+        int numberOfBuckets,
+        RoutingService routingService
+    ) {
         this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
         this.buckets = new HashMap<>();
@@ -31,14 +36,22 @@ public class BucketManager {
         addNewBuckets(numberOfBuckets);
     }
 
-    public boolean isInSelf(String key) {
+    public List<BucketInfo> getAllBuckets() {
+        return bucketMap.getAllBuckets();
+    }
+
+    public List<Bucket> getSelfBuckets() {
+        return List.copyOf(buckets.values());
+    }
+
+    public boolean isKeyInSelf(String key) {
         return bucketMap.isBucketInNode(nodeId, getBucketIdByKey(key));
     }
 
     public Bucket getBucket(String key) {
         String bucketId = getBucketIdByKey(key);
         Bucket bucket = buckets.get(bucketId);
-        if (bucket == null) {
+        if (Objects.isNull(bucket)) {
             throw new IllegalStateException("Bucket not found for key: " + key);
         }
         return bucket;
@@ -46,15 +59,18 @@ public class BucketManager {
 
     private String getBucketIdByKey(String key) {
         int index = routingService.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
-        return bucketMap.getBucketInfo(index).getBucketId();
+        return getBucketInfo(index).getBucketId();
+    }
+
+    private BucketInfo getBucketInfo(int index) {
+        return bucketMap.getBucketInfo(index);
     }
 
     private void addNewBuckets(int numberOfBuckets) {
         List<BucketInfo> bucketInfo = new ArrayList<>();
         IntStream.range(0, numberOfBuckets).forEach(i -> {
             String bucketId = ULID.generate();
-            Bucket bucket = new Bucket(bucketId);
-            buckets.put(bucketId, bucket);
+            addBucket(bucketId);
             bucketInfo.add(BucketInfo.builder().bucketId(bucketId).nodeId(nodeId).build());
         });
         bucketMap.addBuckets(bucketInfo);
@@ -70,8 +86,35 @@ public class BucketManager {
         bucket.put(key, value);
     }
 
+    public void putAll(final Map<String, CacheEntry> entries) {
+        Map<Bucket, Map<String, CacheEntry>> entriesOrderedByBuckets = new HashMap<>();
+        for (Entry<String, CacheEntry> entry : entries.entrySet()) {
+            String key = entry.getKey();
+            CacheEntry value = entry.getValue();
+            Bucket bucket = getBucket(key);
+            entriesOrderedByBuckets.computeIfAbsent(bucket, k -> new HashMap<>()).put(key, value);
+        }
+        entriesOrderedByBuckets.forEach(
+            (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket)
+        );
+    }
+
     public void delete(final String key) {
         Bucket bucket = getBucket(key);
         bucket.delete(key);
+    }
+
+    private void addBucket(String bucketId) {
+        buckets.putIfAbsent(bucketId, new Bucket(bucketId));
+    }
+
+    public void createFromPrimary(List<BucketInfo> primaryBucketInfo) {
+        buckets.clear();
+        bucketMap.clearBucketsOf(nodeId);
+        bucketMap.addBuckets(primaryBucketInfo);
+        primaryBucketInfo.forEach(bucketInfo -> {
+            String bucketId = bucketInfo.getBucketId();
+            addBucket(bucketId);
+        });
     }
 }

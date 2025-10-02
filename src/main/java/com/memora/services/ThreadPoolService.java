@@ -1,7 +1,8 @@
 package com.memora.services;
 
-import com.google.inject.Inject;
 import com.memora.enums.ThreadPool;
+
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,11 +10,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+@Slf4j
 public class ThreadPoolService {
 
     private final ConcurrentHashMap<String, ExecutorService> threadPoolMap;
 
-    @Inject
     public ThreadPoolService() {
         threadPoolMap = new ConcurrentHashMap<>();
     }
@@ -26,18 +27,18 @@ public class ThreadPoolService {
         return threadPoolMap.put(name, Executors.newFixedThreadPool(size));
     }
 
-    public <T> Future<T> submit(String threadPoolName, Callable<T> task) {
-        ExecutorService threadPool = threadPoolMap.get(threadPoolName);
+    public <T> Future<T> submit(ThreadPool pool, Callable<T> task) {
+        ExecutorService threadPool = threadPoolMap.get(pool.getName());
         if (threadPool == null) {
-            throw new IllegalStateException("Thread pool not found: " + threadPoolName);
+            throw new IllegalStateException("Thread pool not found: " + pool.name());
         }
         return threadPool.submit(task);
     }
-
-    public void submit(String threadPoolName, Runnable task) {
-        ExecutorService threadPool = threadPoolMap.get(threadPoolName);
+    
+    public void submit(ThreadPool pool, Runnable task) {
+        ExecutorService threadPool = threadPoolMap.get(pool.getName());
         if (threadPool == null) {
-            throw new IllegalStateException("Thread pool not found: " + threadPoolName);
+            throw new IllegalStateException("Thread pool not found: " + pool.name());
         }
         threadPool.submit(task);
     }

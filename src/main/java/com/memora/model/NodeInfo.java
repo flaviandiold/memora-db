@@ -20,7 +20,7 @@ public final class NodeInfo implements Serializable {
     private final String nodeId;
     private final String host;
     private final int port;
-    
+
     private NodeType nodeType;
     private Status status;
     private long epoch;
@@ -55,5 +55,13 @@ public final class NodeInfo implements Serializable {
 
     public boolean equals(String host, int port) {
         return this.host.equals(host) && this.port == port;
+    }
+
+    public boolean isPrimary() {
+        return NodeType.PRIMARY.equals(nodeType);
+    }
+
+    public boolean isReplica() {
+        return NodeType.REPLICA.equals(nodeType);
     }
 }

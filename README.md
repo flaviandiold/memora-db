@@ -1,3 +1,5 @@
-1. mvn clean package
-2. docker compose up --build
-3. telnet localhost 9090
+1. chmod +x ./start.sh
+2. ./start.sh
+
+Commands
+1. NODE REPLICATE node-1@9090

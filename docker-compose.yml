@@ -6,6 +6,7 @@ services:
     container_name: memora-node-1
     ports:
       - "9090:9090"
+      - "5005:5005"
     networks:
       memoranet:
         aliases:

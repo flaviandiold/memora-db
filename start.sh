@@ -17,5 +17,7 @@ case "$1" in
         ;;
     *)
         docker compose up --build -d
+        sleep 1
+        docker exec -it memora-node-1 memora-cli
         ;;
 esac

@@ -12,21 +12,22 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class NodeOperation extends Operation {
+
     private static final String NODE_COMMAND = Operations.NODE.operation();
     private static final String PRIMARIZE_COMMAND = "PRIMARIZE";
     private static final String REPLICATE_COMMAND = "REPLICATE";
-    
-    private final MemoraNode memoraNode;
+
+    private final MemoraNode node;
 
     @Inject
     public NodeOperation(
-        final MemoraNode memoraNode
+            final MemoraNode node
     ) {
-        this.memoraNode = memoraNode;
+        this.node = node;
     }
 
     @Override
-    public RpcResponse execute(RpcRequest request) { 
+    public RpcResponse execute(RpcRequest request) {
         String command = request.command();
         String[] parts = command.split(" ");
         if (!NODE_COMMAND.equalsIgnoreCase(parts[0])) {
@@ -38,18 +39,15 @@ public class NodeOperation extends Operation {
         }
 
         final String address[] = parts[2].split("@");
-        log.info(address.length + " " + parts[2] + " " + Arrays.toString(address));
         if (address.length < 2) {
             return RpcResponse.BAD_REQUEST("Invalid address for NodeCommand: " + parts[2]);
         }
 
         switch (parts[1].toUpperCase()) {
-            case PRIMARIZE_COMMAND -> {
-                memoraNode.primarize(address[0], Integer.parseInt(address[1]));
-            }
-            case REPLICATE_COMMAND -> {
-                memoraNode.replicate(address[0], Integer.parseInt(address[1]));
-            }
+            case PRIMARIZE_COMMAND ->
+                node.primarize(address[0], Integer.parseInt(address[1]));
+            case REPLICATE_COMMAND ->
+                node.replicate(address[0], Integer.parseInt(address[1]));
             default -> {
                 return RpcResponse.UNSUPPORTED_OPERATION("Invalid sub-command for NodeCommand: " + parts[1]);
             }

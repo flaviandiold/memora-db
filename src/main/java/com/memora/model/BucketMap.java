@@ -7,8 +7,10 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 @Data
+@Slf4j
 public class BucketMap {
 
     private int numberOfActiveBuckets;
@@ -37,12 +39,11 @@ public class BucketMap {
     public void addBuckets(List<BucketInfo> buckets) {
         buckets.forEach(bucket -> addBucket(bucket));
         increaseNumberOfActiveBuckets(buckets.size());
-        allBuckets = List.copyOf(bucketInfoList);
+        makeAllBuckets();
     }
 
     private void addBucket(BucketInfo bucket) {
-        nodeToBucketsMap.putIfAbsent(bucket.getNodeId(), new TreeSet<>());
-        nodeToBucketsMap.get(bucket.getNodeId()).add(bucket.getBucketId());
+        nodeToBucketsMap.computeIfAbsent(bucket.getNodeId(), k -> new TreeSet<>()).add(bucket.getBucketId());
         bucketInfoList.add(bucket);
     }
 
@@ -62,5 +63,21 @@ public class BucketMap {
 
     public BucketInfo getBucketInfo(int index) {
         return allBuckets.get(index);
+    }
+
+    public List<BucketInfo> getAllBuckets() {
+        return allBuckets;
+    }
+
+    public void clearBucketsOf(String nodeId) {
+        int size = nodeToBucketsMap.get(nodeId).size();
+        nodeToBucketsMap.remove(nodeId);
+        bucketInfoList.removeIf((bucket) -> bucket.getNodeId().equals(nodeId));
+        decreaseNumberOfActiveBuckets(size);
+        makeAllBuckets();
+    }
+
+    private void makeAllBuckets() {
+        allBuckets = List.copyOf(bucketInfoList);
     }
 }

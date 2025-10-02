@@ -12,8 +12,10 @@ import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
 import com.memora.core.Version;
 import com.memora.model.NodeInfo;
+import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
+import com.memora.services.ReplicationManager;
 
 public class MemoraModule extends AbstractModule {
 
@@ -32,9 +34,12 @@ public class MemoraModule extends AbstractModule {
     @Singleton
     public MemoraNode provideMemoraNode(
         final NodeInfo nodeInfo,
-        final Provider<ClusterOrchestrator> clusterOrchestratorProvider
+        final Version version,
+        final BucketManager bucketManager,
+        final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
+        final Provider<ReplicationManager> replicationManagerProvider
     ) {
-        return new MemoraNode(nodeInfo, clusterOrchestratorProvider);
+        return new MemoraNode(nodeInfo, version, bucketManager, clusterOrchestratorProvider, replicationManagerProvider);
     }
 
     @Provides
@@ -58,13 +63,13 @@ public class MemoraModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public MemoraDB initiateCache(final MemoraNode node, final MemoraServer server) {
-        return new MemoraDB(node, server);
+    public MemoraDB initiateCache(final MemoraServer server) {
+        return new MemoraDB(server);
     }
 
     @Provides
     @Singleton
-    public Version provideVersion(MemoraNode node) {
-        return new Version(node);
+    public Version provideVersion(NodeInfo nodeInfo, Provider<ClusterOrchestrator> clusterOrchestratorProvider) {
+        return new Version(nodeInfo, clusterOrchestratorProvider);
     }
 }

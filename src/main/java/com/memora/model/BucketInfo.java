@@ -11,7 +11,6 @@ import lombok.Data;
 @AllArgsConstructor
 @Builder
 public class BucketInfo {
-
     private final String bucketId;
     private final String nodeId;
 }

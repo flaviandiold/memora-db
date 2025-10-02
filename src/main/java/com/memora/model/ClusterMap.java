@@ -60,22 +60,26 @@ public class ClusterMap {
         });
     }
 
-    public NodeInfo getMyPrimary(NodeInfo replica) {
-        String primaryId = replicaToPrimaryMap.get(replica.getNodeId());
+    public boolean isPrimaryOf(String replicaId, String primaryId) {
+        if (!replicaToPrimaryMap.containsKey(replicaId)) return false;
+        return replicaToPrimaryMap.get(replicaId).equals(primaryId);
+    }
+
+    public NodeInfo getMyPrimary(String replicaId) {
+        String primaryId = replicaToPrimaryMap.get(replicaId);
         return allNodes.get(primaryId);
     }
 
-    public List<String> getReplicas(String primaryId) {
+    public List<String> getReplicaIds(String primaryId) {
         return List.copyOf(primaryToReplicasMap.get(primaryId));
+    }
+
+    public List<NodeInfo> getReplicas(String primaryId) {
+        return primaryToReplicasMap.get(primaryId).stream().map(allNodes::get).toList();
     }
 
     public void incrementEpoch() {
         epoch++;
-        log.info("Epoch incremented to {}", epoch);
-        log.info("Primarys: {}", primaries);
-        log.info("PrimaryToReplicasMap: {}", primaryToReplicasMap);
-        log.info("ReplicaToPrimaryMap: {}", replicaToPrimaryMap);
-        log.info("AllNodes: {}", allNodes);
     }
 
     private void addNode(NodeInfo node) {
@@ -90,5 +94,57 @@ public class ClusterMap {
     private Comparator<String> getComparator() {
         return (a, b) -> allNodes.get(a).getNodeId().compareTo(allNodes.get(b).getNodeId());
     }
+
+    public void merge(ClusterMap other) {
+        if (other == null) {
+            return;
+        }
+
+        // If other map is newer → adopt completely
+        if (other.getEpoch() > this.epoch) {
+            this.epoch = other.getEpoch();
+
+            // Deep copy
+            this.allNodes.clear();
+            this.allNodes.putAll(other.getAllNodes());
+
+            this.primaries.clear();
+            this.primaries.addAll(other.getPrimaries());
+
+            this.primaryToReplicasMap.clear();
+            other.getPrimaryToReplicasMap().forEach((k, v) ->
+                this.primaryToReplicasMap.put(k, new PriorityBlockingQueue<>(v))
+            );
+
+            this.replicaToPrimaryMap.clear();
+            this.replicaToPrimaryMap.putAll(other.getReplicaToPrimaryMap());
+
+            return;
+        }
+
+        // If epochs are equal, merge conservatively
+        if (other.getEpoch() == this.epoch) {
+            // Merge nodes
+            other.getAllNodes().forEach((id, node) -> this.allNodes.putIfAbsent(id, node));
+
+            // Merge primaries
+            this.primaries.addAll(other.getPrimaries());
+
+            // Merge replica mappings
+            other.getPrimaryToReplicasMap().forEach((primary, replicas) -> {
+                this.primaryToReplicasMap
+                    .computeIfAbsent(primary, id -> new PriorityBlockingQueue<>(60, getComparator()))
+                    .addAll(replicas);
+            });
+
+            // Merge reverse mapping
+            other.getReplicaToPrimaryMap().forEach((replica, primary) -> {
+                this.replicaToPrimaryMap.putIfAbsent(replica, primary);
+            });
+        }
+
+        // If other epoch is older, do nothing
+    }
+
 
 }

@@ -13,6 +13,5 @@ import lombok.RequiredArgsConstructor;
 public class CacheEntry {
 
     private final String value;
-    private final long version;
     private final long ttl;
 }

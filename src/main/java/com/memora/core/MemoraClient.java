@@ -1,5 +1,6 @@
 package com.memora.core;
 
+import com.memora.enums.RpcRespnseStatus;
 import com.memora.exceptions.RpcException;
 import com.memora.utils.Parser;
 
@@ -13,8 +14,15 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
+import com.memora.model.CacheEntry;
 import com.memora.model.RpcResponse;
 
 /**
@@ -28,6 +36,8 @@ public class MemoraClient implements Closeable {
     private final int port;
     private final int CONNECT_TIMEOUT_MS = 2000;
     private final ReentrantLock lock = new ReentrantLock();
+    private final int PUT_BATCH_SIZE = 50;
+    private final int MAX_RETRIES = 3;
 
     private Socket socket;
     private BufferedWriter out;
@@ -68,23 +78,29 @@ public class MemoraClient implements Closeable {
             try {
                 connectWithRetry();
 
-                System.out.println("CLIENT sending " + request + " to " + host + ":" + port);
                 out.write(request);
                 out.newLine();
                 out.flush();
 
                 String responseObject = in.readLine();
-                System.out.println("CLIENT received " + responseObject + " from " + host + ":" + port);
                 return Parser.fromJson(responseObject, RpcResponse.class);
             } catch (IOException e) {
                 // This indicates a connection or serialization error, which is critical.
-                System.err.printf("CLIENT error during call to %s:%d. Error: %s%n", host, port, e.getMessage());
+                log.error("CLIENT error during call to {}:{}. Error: {}", host, port, e.getMessage());
                 // We should probably close the connection and let the caller decide to retry.
                 closeQuietly();
                 throw new RpcException("Failed to complete RPC call", e);
             }
         } finally {
             lock.unlock();
+        }
+    }
+
+    public RpcResponse callWithoutError(String request) {
+        try {
+            return call(request);
+        } catch (RpcException e) {
+            return RpcResponse.ERROR(request);
         }
     }
 
@@ -100,6 +116,149 @@ public class MemoraClient implements Closeable {
         return call(String.format("NODE REPLICATE %s@%d", host, port));
     }
 
+    public boolean put(String key, String value, long ttl) {
+        String request = String.format("PUT %s %s EXAT %d", key, value, ttl);
+        return isSuccess(request);
+    }
+
+    public boolean put(String key, String value) {
+        return put(key, value, -1);
+    }
+
+    public boolean put(Map<String, CacheEntry> entries) {
+        if (entries.isEmpty()) {
+            return true;
+        }
+
+        List<String> failedQueries = new ArrayList<>();
+        StringBuilder builder = new StringBuilder();
+        builder.append("PUT");
+        int soFar = 0;
+        boolean itemAdded = false;
+        for (Map.Entry<String, CacheEntry> entry : entries.entrySet()) {
+            CacheEntry item = entry.getValue();
+            builder.append(String.format(" %s %s EXAT %d", entry.getKey(), item.getValue(), item.getTtl()));
+            itemAdded = true;
+            if (++soFar >= PUT_BATCH_SIZE) {
+                String request = builder.toString();
+                if (!isSuccess(request)) {
+                    failedQueries.add(request);
+                }
+                builder.setLength(0);
+                builder.append("PUT");
+                soFar = 0;
+                itemAdded = false;
+            }
+        }
+        if (itemAdded) {
+            String request = builder.toString();
+            if (!isSuccess(request)) {
+                failedQueries.add(request);
+            }
+        }
+
+        int retries = MAX_RETRIES;
+        while (!failedQueries.isEmpty() && retries >= 0) {
+            for (int i = failedQueries.size() - 1; i >= 0; i--) {
+                String request = failedQueries.get(i);
+                if (isSuccess(request)) {
+                    failedQueries.remove(i);
+                }
+            }
+            retries--;
+        }
+
+        return failedQueries.isEmpty();
+    }
+
+    // This is the original, blocking method.
+    public boolean put(Map<String, CacheEntry> entries, ExecutorService threadPool) {
+        // For simple blocking behavior, we can call the async version and wait for its result.
+        return putAsync(entries, threadPool).join();
+    }
+
+    /**
+     * Puts multiple entries into the cache by sending them in parallel batches.
+     * This method is fully asynchronous and non-blocking.
+     *
+     * @param entries The map of entries to put in the cache.
+     * @param pool    The executor service (thread pool) to run the parallel tasks on.
+     * @return A CompletableFuture that will complete with 'true' if all batches
+     * (including retries) were successful, and 'false' otherwise.
+     */
+    public CompletableFuture<Boolean> putAsync(Map<String, CacheEntry> entries, ExecutorService pool) {
+        if (entries == null || entries.isEmpty()) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        List<String> batchCommands = new ArrayList<>();
+        StringBuilder builder = new StringBuilder("PUT");
+        int soFar = 0;
+
+        for (Map.Entry<String, CacheEntry> entry : entries.entrySet()) {
+            CacheEntry item = entry.getValue();
+            builder.append(String.format(" %s %s EXAT %d", entry.getKey(), item.getValue(), item.getTtl()));
+            
+            if (++soFar >= PUT_BATCH_SIZE) {
+                batchCommands.add(builder.toString());
+                builder.setLength(0);
+                builder.append("PUT");
+                soFar = 0;
+            }
+        }
+        // Add the last, partially filled batch if it exists
+        if (soFar > 0) {
+            batchCommands.add(builder.toString());
+        }
+        
+        if (batchCommands.isEmpty()) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        List<CompletableFuture<Boolean>> futures = batchCommands.stream()
+            .map(command -> attemptWithRetries(command, MAX_RETRIES, pool))
+            .collect(Collectors.toList());
+
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+            .thenApply(v -> futures.stream().allMatch(CompletableFuture::join)
+        );
+    }
+
+    /**
+     * A helper method that attempts to send a request and retries on failure.
+     *
+     * @param request      The command string to send.
+     * @param retriesLeft  The number of retries remaining.
+     * @param pool         The thread pool to execute on.
+     * @return A CompletableFuture that completes with the success status.
+     */
+    private CompletableFuture<Boolean> attemptWithRetries(String request, int retriesLeft, ExecutorService pool) {
+        // Run the network call asynchronously on the thread pool
+        CompletableFuture<Boolean> attempt = CompletableFuture.supplyAsync(() -> isSuccess(request), pool);
+
+        return attempt.thenComposeAsync(success -> {
+            if (success) {
+                // If successful, we are done.
+                return CompletableFuture.completedFuture(true);
+            }
+            if (retriesLeft > 0) {
+                // If failed and we have retries left, try again.
+                System.out.println("Request failed, retrying... (" + retriesLeft + " retries left)");
+                return attemptWithRetries(request, retriesLeft - 1, pool);
+            }
+            // If failed and no retries are left, return final failure.
+            return CompletableFuture.completedFuture(false);
+        }, pool);
+    }
+
+    public RpcResponse get(String key) {
+        return call(String.format("GET %s", key));
+    }
+
+    public boolean delete(String key) {
+        String request = String.format("DELETE %s", key);
+        return isSuccess(request);
+    }
 
     public String getHost() {
         try {
@@ -117,6 +276,10 @@ public class MemoraClient implements Closeable {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean isSuccess(String request) {
+        return RpcRespnseStatus.OK.equals(callWithoutError(request).getStatus());
     }
 
     @Override

@@ -1,10 +1,18 @@
 package com.memora.core;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
 import com.google.inject.Inject;
 import com.google.inject.Provider;
-import com.memora.enums.NodeType;
+import com.memora.model.BucketInfo;
+import com.memora.model.CacheEntry;
+import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
+import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
+import com.memora.services.ReplicationManager;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -12,50 +20,99 @@ import lombok.extern.slf4j.Slf4j;
 public class MemoraNode {
 
     private final NodeInfo info;
+    private final Version version;
+    private final BucketManager bucketManager;
     private final Provider<ClusterOrchestrator> clusterOrchestratorProvider;
+    private final Provider<ReplicationManager> replicationManagerProvider;
 
     private ClusterOrchestrator clusterOrchestrator;
+    private ReplicationManager replicationManager;
 
     @Inject
     public MemoraNode(
             NodeInfo nodeInfo,
-            Provider<ClusterOrchestrator> clusterOrchestratorProvider
+            Version version,
+            BucketManager bucketManager,
+            Provider<ClusterOrchestrator> clusterOrchestratorProvider,
+            Provider<ReplicationManager> replicationManagerProvider
     ) {
         this.info = nodeInfo;
+        this.version = version;
+        this.bucketManager = bucketManager;
         this.clusterOrchestratorProvider = clusterOrchestratorProvider;
+        this.replicationManagerProvider = replicationManagerProvider;
         log.info("Node initialized with ID: {}, Host: {}, Port: {}", info.getNodeId(), info.getHost(), info.getPort());
     }
 
-    public void start() {
-        log.info("Starting Memora Node...");
+    public NodeInfo getInfo() {
+        return info;
     }
 
-    public void stop() {
-        log.info("Stopping Memora Node");
+    public void incrementVersion() {
+        version.increment();
     }
 
-    public void clearInSyncReplicas() {
-        if (NodeType.PRIMARY.equals(info.getNodeType())) {
-            clusterOrchestrator.clearInSyncReplicas();
+    public List<BucketInfo> getAllBuckets() {
+        return bucketManager.getAllBuckets();
+    }
+
+    public void put(String key, CacheEntry value) {
+        bucketManager.put(key, value);
+        version.increment();
+
+        if (info.isPrimary()) {
+            getReplicationManager().put(key, value);
         }
     }
 
-    public void primarize(String host, int port) {
-        buildCluster();
-        clusterOrchestrator.primarize(host, port);
+    public void putAll(Map<String, CacheEntry> entries) {
+        bucketManager.putAll(entries);
+        version.increment();
+
+        if (info.isPrimary()) {
+            getReplicationManager().putAll(entries);
+        }
+    }
+
+    public void delete(String key) {
+        bucketManager.delete(key);
+        version.increment();
+
+        if (info.isPrimary()) {
+            getReplicationManager().delete(key);
+        }
+    }
+
+    public CacheEntry get(String key) {
+        return bucketManager.get(key);
     }
 
     public void replicate(String host, int port) {
-        buildCluster();
-        clusterOrchestrator.replicate(host, port);
+        getClusterOrchestrator().replicate(host, port);
     }
 
-    private void buildCluster() {
-        if (!NodeType.STANDALONE.equals(info.getNodeType())) {
-            log.info("Cluster already built.");
-            return;
+    public void primarize(String host, int port) {
+        getClusterOrchestrator().primarize(host, port);
+    }
+
+    public ClusterMap getClusterMap() {
+        if (Objects.isNull(clusterOrchestrator)) {
+            return null;
         }
-        log.info("Building cluster...");
-        clusterOrchestrator = clusterOrchestratorProvider.get();
+        return getClusterOrchestrator().getMap();
+    }
+
+    private ClusterOrchestrator getClusterOrchestrator() {
+        if (Objects.isNull(clusterOrchestrator)) {
+            clusterOrchestrator = clusterOrchestratorProvider.get();
+        }
+        return clusterOrchestrator;
+    }
+
+    private ReplicationManager getReplicationManager() {
+        if (Objects.isNull(replicationManager)) {
+            replicationManager = replicationManagerProvider.get();
+        }
+        return replicationManager;
     }
 }

@@ -3,23 +3,23 @@ package com.memora.operations;
 import java.util.Objects;
 
 import com.google.inject.Inject;
+import com.memora.core.MemoraNode;
 import com.memora.enums.Operations;
 import com.memora.model.CacheEntry;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
-import com.memora.services.BucketManager;
 
 public class GetOperation extends Operation {
 
     private static final String GET_COMMAND = Operations.GET.operation();
 
-    private final BucketManager bucketManager;
+    private final MemoraNode memoraNode;
 
     @Inject
     public GetOperation(
-        final BucketManager bucketManager
+        final MemoraNode memoraNode
     ) {
-        this.bucketManager = bucketManager;
+        this.memoraNode = memoraNode;
     }
 
     @Override
@@ -34,7 +34,7 @@ public class GetOperation extends Operation {
             return RpcResponse.BAD_REQUEST;
         }
         String key = parts[1];
-        CacheEntry entry = bucketManager.get(key);
+        CacheEntry entry = memoraNode.get(key);
         if (Objects.isNull(entry)) {
             return RpcResponse.NOT_FOUND;
         } else {

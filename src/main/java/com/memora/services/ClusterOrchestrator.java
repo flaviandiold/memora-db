@@ -1,10 +1,7 @@
 package com.memora.services;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
@@ -15,31 +12,37 @@ import com.memora.model.RpcResponse;
 import lombok.extern.slf4j.Slf4j;
 
 import com.memora.enums.NodeType;
+import com.memora.enums.ThreadPool;
+import com.memora.utils.Parser;
 
 @Slf4j
-public class ClusterOrchestrator {
+public final class ClusterOrchestrator {
 
     private final NodeInfo currentNode;
-    private final List<String> inSyncReplicas;
+    private final ReplicationManager replicationManager;
+    private final RoutingService routingService;
+    private final ThreadPoolService threadPoolService;
+
     private final ClusterMap clusterMap;
-    private final Map<String, MemoraClient> clientMap;
 
     @Inject
-    public ClusterOrchestrator(NodeInfo currentNode) {
+    public ClusterOrchestrator(NodeInfo currentNode, ReplicationManager replicationManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+        log.info("Starting cluster orchestrator...");
         this.currentNode = currentNode;
-        this.inSyncReplicas = new ArrayList<>();
-        this.clusterMap = new ClusterMap(0);
-        this.clientMap = new HashMap<>();
+        this.replicationManager = replicationManager;
+        this.threadPoolService = threadPoolService;
+        this.routingService = routingService;
+        this.clusterMap = clusterMap;
+        buildCluster();
     }
 
     public void clearInSyncReplicas() {
-        inSyncReplicas.clear();
+        replicationManager.clearInSyncReplicas();
     }
 
-    public void addPrimary(NodeInfo nodeInfo) {
-        clusterMap.addPrimary(nodeInfo);
+    public ClusterMap getMap() {
+        return clusterMap;
     }
-
 
     /**
      * Function that will make the given node at host and port
@@ -61,8 +64,8 @@ public class ClusterOrchestrator {
                         clusterMap.addPrimary(currentNode);
                     }
                     case REPLICA -> {
-                        NodeInfo myPrimary = clusterMap.getMyPrimary(currentNode);
-                        clientMap.get(myPrimary.getNodeId()).primarize(host, port);
+                        NodeInfo myPrimary = clusterMap.getMyPrimary(currentNode.getNodeId());
+                        routingService.getOrCreate(myPrimary).primarize(host, port);
                         return;
                     }
                 }
@@ -76,16 +79,17 @@ public class ClusterOrchestrator {
              */
             NodeInfo replica = NodeInfo.create(replicaId, host, port);
             clusterMap.removePrimary(replica);
-            clientMap.put(replicaId, client);
-            clusterMap.addReplica(currentNode.getNodeId(), replica);
+            routingService.addClient(replicaId, client);
             clusterMap.incrementEpoch();
+            client.replicate(currentNode.getHost(), currentNode.getPort());
+            replicationManager.replicateDataTo(replica);
         } catch (IOException | RuntimeException e) {
             log.error("Failed to primarize to {}:{}", host, port);
             throw new RuntimeException(e);
         }
     }
-
-
+    
+    
     /**
      * Function that will initiate replication of the data
      * from the node at given host and port.
@@ -101,30 +105,47 @@ public class ClusterOrchestrator {
             }
             switch (currentNode.getNodeType()) {
                 case PRIMARY -> {
-                    List<String> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+                    List<String> replicas = clusterMap.getReplicaIds(currentNode.getNodeId());
                     replicas.forEach(replica -> {
-                        clientMap.get(replica).replicate(host, port);
+                        routingService.getClient(replica).replicate(host, port);
                     });
                 }
             }
             currentNode.setNodeType(NodeType.REPLICA);
             final RpcResponse response = client.getNodeId();
             final String primaryId = response.getResponse();
+            final String replicaId = currentNode.getNodeId();
+            if (clusterMap.isPrimaryOf(replicaId, primaryId)) return;
             final NodeInfo primary = NodeInfo.create(primaryId, host, port);
             /**
              * Removing current node as primary
              * And adding current node as replica to the recieved primaryId
              */
             clusterMap.removePrimary(currentNode);
-            clientMap.put(primaryId, client);
+            routingService.addClient(primaryId, client);
             clusterMap.addReplica(primaryId, currentNode);
-
-            client.primarize(currentNode.getHost(), currentNode.getPort());
-            addPrimary(primary);
+            
+            replicationManager.initiateReplicationOf(primary);
+            clusterMap.addPrimary(primary);
+            String primaryMap = client.call("INFO CLUSTER MAP").getResponse();
+            ClusterMap map = Parser.fromJson(primaryMap, ClusterMap.class);
+            clusterMap.merge(map);
         } catch (IOException | RuntimeException e) {
             log.error("Failed to replicate to {}:{}", host, port);
             throw new RuntimeException(e);
         }
-        
+    }
+
+    public void buildCluster() {
+        if (!NodeType.STANDALONE.equals(currentNode.getNodeType())) {
+            log.info("Cluster already built.");
+            return;
+        }
+        log.info("Building cluster...");
+        for (ThreadPool pool : ThreadPool.getAllThreadPool()) {
+            if (pool.isCluster()) {
+                threadPoolService.createThreadPool(pool);
+            }
+        }
     }
 }

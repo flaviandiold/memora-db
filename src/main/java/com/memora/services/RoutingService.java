@@ -1,16 +1,44 @@
 package com.memora.services;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.google.inject.Inject;
+import com.memora.core.MemoraClient;
+import com.memora.model.NodeInfo;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class RoutingService {
+
+    private final Map<String, MemoraClient> clientMap;
 
 
     @Inject
     public RoutingService() {
+        clientMap = new HashMap<>();
+    }
+
+    public void addClient(String nodeId, MemoraClient client) {
+        clientMap.put(nodeId, client);
+    }
+
+    public MemoraClient getOrCreate(NodeInfo node) throws IOException {
+        MemoraClient client = getClient(node.getNodeId());
+        if (client == null) {
+            client = new MemoraClient(node.getHost(), node.getPort());
+            addClient(node.getNodeId(), client);
+        }
+        return client;
+    }
+
+    public MemoraClient getClient(String nodeId) {
+        return clientMap.get(nodeId);
     }
 
     /**
@@ -133,6 +161,8 @@ public class RoutingService {
     }
 
     public int getBucketIndex(String key, int numBuckets) {
-        return jumpConsistentHash(key, numBuckets);
+        int bucketIndex = jumpConsistentHash(key, numBuckets);
+        log.info("Found bucket {} for key: {} out of {} buckets", bucketIndex, key, numBuckets);
+        return bucketIndex;
     }
 }

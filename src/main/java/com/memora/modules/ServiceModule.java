@@ -6,6 +6,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
 import com.memora.enums.ThreadPool;
+import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
 import com.memora.operations.DelOperation;
 import com.memora.operations.GetOperation;
@@ -16,6 +17,7 @@ import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
+import com.memora.services.ReplicationManager;
 import com.memora.services.RoutingService;
 import com.memora.services.ThreadPoolService;
 
@@ -65,10 +67,22 @@ public class ServiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo) {
-        return new ClusterOrchestrator(nodeInfo);
+    public ClusterMap provideClusterMap() {
+        return new ClusterMap(0);
     }
 
+    @Provides
+    @Singleton
+    public ReplicationManager provideReplicationManager(NodeInfo nodeInfo, BucketManager bucketManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+        return new ReplicationManager(nodeInfo, bucketManager, routingService, threadPoolService, clusterMap);
+    }
+
+
+    @Provides
+    @Singleton
+    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo, ReplicationManager replicationManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+        return new ClusterOrchestrator(nodeInfo, replicationManager, routingService, threadPoolService, clusterMap);
+    }
 
     @Provides
     @Singleton

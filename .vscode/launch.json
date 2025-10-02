@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "MemoraDB",
+            "request": "attach",
+            "port": 5005,
+            "hostName": "localhost",
+            "projectName": "memora-db"
+        },
+    ]
+}

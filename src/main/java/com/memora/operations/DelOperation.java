@@ -1,26 +1,22 @@
 package com.memora.operations;
 
 import com.google.inject.Inject;
-import com.memora.core.Version;
+import com.memora.core.MemoraNode;
 import com.memora.enums.Operations;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
-import com.memora.services.BucketManager;
 import com.memora.store.WAL;
 
 public class DelOperation extends Operation {
 
-    private final BucketManager bucketManager;
-    private final Version version;
+    private final MemoraNode node;
 
 
     @Inject
     public DelOperation(
-        final BucketManager bucketManager,
-        final Version version
+        final MemoraNode node
     ) {
-        this.bucketManager = bucketManager;
-        this.version = version;
+        this.node = node;
     }
 
     @Override
@@ -34,8 +30,7 @@ public class DelOperation extends Operation {
             return RpcResponse.BAD_REQUEST("DELETE command requires at least 1 argument");
         }
         String key = parts[1];
-        bucketManager.delete(key);
-        version.increment();
+        node.delete(key);
         return RpcResponse.OK;
     }
 

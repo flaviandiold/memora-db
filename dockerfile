@@ -11,5 +11,5 @@ COPY memora-cli /usr/local/bin/memora-cli
 RUN chmod +x /usr/local/bin/memora-cli
 
 # Run the jar
-ENTRYPOINT ["java", "-jar", "memora-db.jar"]
+ENTRYPOINT ["java", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "memora-db.jar"]
 

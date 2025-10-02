@@ -1,6 +1,5 @@
 .classpath
 .DS_Store
 .project
-.vscode/
 target/
 dependency-reduced-pom.xml

@@ -41,6 +41,10 @@ public class CommandExecutor {
 
     }
 
+    public boolean isStream() {
+        return true;
+    }
+
     public RpcResponse execute(RpcRequest request) {
         try {
             log.info("Executing request: {}", request);
