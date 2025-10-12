@@ -80,6 +80,10 @@ public class ClusterMap {
         return replicas.stream().map(allNodes::get).toList();
     }
 
+    public boolean containsNode(String nodeId) {
+        return allNodes.containsKey(nodeId);
+    }
+
     public void incrementEpoch() {
         epoch++;
     }

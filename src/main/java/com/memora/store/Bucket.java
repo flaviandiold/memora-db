@@ -1,5 +1,6 @@
 package com.memora.store;
 
+import java.util.List;
 import java.util.Map;
 
 import com.memora.model.CacheEntry;
@@ -8,7 +9,6 @@ import com.memora.utils.InsertionOrderMap;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 
 import com.memora.core.MemoraClient;
@@ -34,19 +34,19 @@ public class Bucket {
         return bucketId;
     }
 
-    public void put(final String key, final CacheEntry value) {
-        if (value.getTtl() != -1 && System.currentTimeMillis() > value.getTtl()) {
+    public void put(final CacheEntry entry) {
+        if (entry.getTtl() != -1 && System.currentTimeMillis() > entry.getTtl()) {
             return;
         }
-        store.compute(key, (k, v) -> {
-            insertionOrder.put(key);
-            return value;
+
+        store.compute(entry.getKey(), (k, v) -> {
+            insertionOrder.put(entry.getKey());
+            return entry;
         });
     }
 
-    public void putAll(final Map<String, CacheEntry> entries) {
-        store.putAll(entries);
-        insertionOrder.putAll(entries.keySet());
+    public void putAll(final List<CacheEntry> entries) {
+        entries.forEach(this::put);
     }
 
     public CacheEntry get(String key) {
@@ -66,7 +66,7 @@ public class Bucket {
     }
 
     public boolean stream(final MemoraClient client, final ExecutorService executor) {
-        return client.put(store, executor);
+        return client.put(store.values(), executor);
     }
 
     private void evict() {

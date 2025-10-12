@@ -20,19 +20,16 @@ import io.netty.handler.codec.MessageToByteEncoder;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class MemoraChannel extends ChannelInitializer {
+public class MemoraChannel extends ChannelInitializer<Channel> {
 
-    private final Version version;
     private final CommandExecutor commandExecutor;
 
     private static final Charset CHARSET = StandardCharsets.UTF_8;
 
 
     public MemoraChannel(
-            Version version,
             CommandExecutor commandExecutor
     ) {
-        this.version = version;
         this.commandExecutor = commandExecutor;
     }
 
@@ -65,14 +62,7 @@ public class MemoraChannel extends ChannelInitializer {
             in.readBytes(bytes);
 
             String command = new String(bytes, CHARSET).trim();
-            int idx = command.indexOf(' ');
-            String operation = idx != -1 ? command.substring(0, idx) : command;
-
-            RpcRequest request = RpcRequest.builder()
-                    .operation(operation)
-                    .version(version.get())
-                    .command(command)
-                    .build();
+            RpcRequest request = Parser.fromJson(command, RpcRequest.class);
 
             out.add(request);
         }

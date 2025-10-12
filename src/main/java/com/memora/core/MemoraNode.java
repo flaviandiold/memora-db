@@ -1,5 +1,6 @@
 package com.memora.core;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,6 +12,7 @@ import com.memora.model.BucketInfo;
 import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
+import com.memora.model.RpcResponse;
 import com.memora.model.NodeBase;
 import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
@@ -23,8 +25,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class MemoraNode {
 
-    private final NodeInfo info;
-    private final Version version;
+    private static NodeInfo info = null;
+
     private final BucketManager bucketManager;
     private final ThreadPoolService threadPoolService;
     private final List<NodeBase> myReplicas;
@@ -37,15 +39,13 @@ public class MemoraNode {
     @Inject
     public MemoraNode(
             final NodeInfo nodeInfo,
-            final Version version,
             final List<NodeBase> myReplicas,
             final ThreadPoolService threadPoolService,
             final BucketManager bucketManager,
             final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
             final Provider<ReplicationManager> replicationManagerProvider
     ) {
-        this.info = nodeInfo;
-        this.version = version;
+        info = nodeInfo;
         this.bucketManager = bucketManager;
         this.threadPoolService = threadPoolService;
         this.clusterOrchestratorProvider = clusterOrchestratorProvider;
@@ -71,37 +71,41 @@ public class MemoraNode {
         log.info("Node started successfully.");
     }
 
-    public NodeInfo getInfo() {
+    public static NodeInfo getInfo() {
         return info;
     }
 
-    public void incrementVersion() {
-        version.increment();
+    public void handleMutation() {
+        if (info.isPrimary()) {
+            getClusterOrchestrator().clearInSyncReplicas();
+        }
     }
 
     public List<BucketInfo> getAllBuckets() {
         return bucketManager.getAllBuckets();
     }
 
-    // public RpcResponse forwardToPrimary(RpcRequest request) {
-    //     return getClusterOrchestrator().forwardToPrimary(request);
-    // }
+    public RpcResponse forwardToPrimary(String request) {
+        return getClusterOrchestrator().forwardToPrimary(request);
+    }
 
-    public void put(String key, CacheEntry value) {
+    public RpcResponse forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
+        return getClusterOrchestrator().forwardPut(entriesByNode);
+    } 
+
+    public void put(CacheEntry entry) {
         increaseQPS();
-        bucketManager.put(key, value);
-        version.increment();
-
+        bucketManager.put(entry);
+        handleMutation();
         if (info.isPrimary()) {
-            getReplicationManager().put(key, value);
+            getReplicationManager().put(entry);
         }
     }
 
-    public void putAll(Map<String, CacheEntry> entries) {
+    public void putAll(final Collection<CacheEntry> entries) {
         increaseQPS();
         bucketManager.putAll(entries);
-        version.increment();
-
+        handleMutation();
         if (info.isPrimary()) {
             getReplicationManager().putAll(entries);
         }
@@ -111,8 +115,7 @@ public class MemoraNode {
     public void delete(String key) {
         increaseQPS();
         bucketManager.delete(key);
-        version.increment();
-
+        handleMutation();
         if (info.isPrimary()) {
             getReplicationManager().delete(key);
         }
@@ -136,6 +139,10 @@ public class MemoraNode {
             return null;
         }
         return getClusterOrchestrator().getMap();
+    }
+
+    public Map<String, List<String>> getKeyToNodeMap(List<String> keys) {
+        return bucketManager.getKeyToNodeMap(keys);
     }
 
     private ClusterOrchestrator getClusterOrchestrator() {

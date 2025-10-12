@@ -13,6 +13,7 @@ public class RpcResponse implements Serializable {
     private static final long serialVersionUID = 1L;
 
     public static final RpcResponse OK = withStatus(RpcRespnseStatus.OK).build();
+    public static final RpcResponse PARTIAL_FULFILLMENT = withStatus(RpcRespnseStatus.PARTIAL_FULFILLMENT).build();
     public static final RpcResponse ERROR = withStatus(RpcRespnseStatus.ERROR).build();
     public static final RpcResponse NOT_FOUND = withStatus(RpcRespnseStatus.NOT_FOUND).build();
     public static final RpcResponse UNSUPPORTED_OPERATION = withStatus(RpcRespnseStatus.UNSUPPORTED_OPERATION).build();
@@ -57,6 +58,10 @@ public class RpcResponse implements Serializable {
 
     public static RpcResponse UNSUPPORTED_OPERATION(String message) {
         return withStatus(RpcRespnseStatus.UNSUPPORTED_OPERATION).response(message).build();
+    }
+
+    public static RpcResponse PARTIAL_FULFILLMENT(String message) {
+        return withStatus(RpcRespnseStatus.PARTIAL_FULFILLMENT).response(message).build();
     }
 
 

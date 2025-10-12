@@ -3,6 +3,7 @@ package com.memora.operations;
 import java.util.Arrays;
 
 import com.google.inject.Inject;
+import com.memora.constants.Constants;
 import com.memora.core.MemoraNode;
 import com.memora.enums.Operations;
 import com.memora.model.RpcRequest;
@@ -28,7 +29,7 @@ public class NodeOperation extends Operation {
 
     @Override
     public RpcResponse execute(RpcRequest request) {
-        String command = request.command();
+        String command = request.getCommand();
         String[] parts = command.split(" ");
         if (!NODE_COMMAND.equalsIgnoreCase(parts[0])) {
             throw new IllegalArgumentException("Invalid command for NodeCommand: " + command);
@@ -38,7 +39,7 @@ public class NodeOperation extends Operation {
             return RpcResponse.BAD_REQUEST("NODE command requires at least 2 arguments");
         }
 
-        final String address[] = parts[2].split(":");
+        final String address[] = parts[2].split(Constants.ADDRESS_DELIMITER);
         if (address.length < 2) {
             return RpcResponse.BAD_REQUEST("Invalid address for NodeCommand: " + parts[2]);
         }

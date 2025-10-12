@@ -22,7 +22,7 @@ public class DelOperation extends Operation {
     @Override
     public RpcResponse execute(RpcRequest request) {
         WAL.log(request);
-        String[] parts = request.command().split(" ");
+        String[] parts = request.getCommand().split(" ");
         if (!parts[0].equalsIgnoreCase(Operations.DELETE.operation())) {
             throw new IllegalCallerException("Invalid command for DeleteCommand");
         }

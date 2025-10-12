@@ -3,9 +3,25 @@
     "configurations": [
         {
             "type": "java",
-            "name": "MemoraDB",
+            "name": "MemoraDB-node-1",
             "request": "attach",
             "port": 5005,
+            "hostName": "localhost",
+            "projectName": "memora-db"
+        },
+        {
+            "type": "java",
+            "name": "MemoraDB-node-2",
+            "request": "attach",
+            "port": 5006,
+            "hostName": "localhost",
+            "projectName": "memora-db"
+        },
+        {
+            "type": "java",
+            "name": "MemoraDB-node-3",
+            "request": "attach",
+            "port": 5007,
             "hostName": "localhost",
             "projectName": "memora-db"
         },

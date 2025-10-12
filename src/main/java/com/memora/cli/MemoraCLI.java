@@ -31,10 +31,8 @@ public class MemoraCLI {
             port = Integer.parseInt(args[1]);
         }
 
-        if (args.length > 2) {
-            if ("concurrencyTest".equalsIgnoreCase(args[2])) {
-                cli.runConcurrencyTest(host, port);
-            }
+        if (args.length > 2 && "concurrencyTest".equalsIgnoreCase(args[2])) {
+            cli.runConcurrencyTest(host, port);
         } else {
             cli.initialize(host, port);
         }

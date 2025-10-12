@@ -12,4 +12,8 @@ public class Constants {
     
     
     public static final String DEFAULT_PORT = "9090";
+    public static final String DEFAULT_REPLICATION_FACTOR = "2";
+
+    public static final String ADDRESS_DELIMITER = "@";
+
 }

@@ -56,7 +56,7 @@ public class EnvironmentModule extends AbstractModule {
         if (!Objects.isNull(myReplicas)) {
             return Arrays.stream(myReplicas.split("\\s*,\\s*"))
                 .<NodeBase>map(replica -> {
-                    String[] parts = replica.split(":");
+                    String[] parts = replica.split(Constants.ADDRESS_DELIMITER);
                     if (parts.length == 1) {
                         return NodeBase.create(parts[0], Integer.parseInt(Constants.DEFAULT_PORT));
                     } else if (parts.length == 2) {

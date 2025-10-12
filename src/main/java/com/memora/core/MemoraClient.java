@@ -1,5 +1,6 @@
 package com.memora.core;
 
+import com.memora.enums.NodeType;
 import com.memora.enums.RpcRespnseStatus;
 import com.memora.exceptions.RpcException;
 import com.memora.utils.Parser;
@@ -15,15 +16,21 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import com.memora.model.CacheEntry;
+import com.memora.model.NodeInfo;
+import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
+import com.memora.services.CommandExecutor;
 
 /**
  * Simple blocking TCP client for cache RPC calls. Keeps a persistent connection
@@ -80,31 +87,49 @@ public class MemoraClient implements Closeable {
         }
     }
 
-    public RpcResponse call(String request) throws RpcException {
-        lock.lock();
-        try {
-            if (closed) {
-                throw new RpcException("Client is closed.");
-            }
-            try {
-                connectWithRetry();
-
-                out.write(request);
-                out.newLine();
-                out.flush();
-
-                String responseObject = in.readLine();
-                return Parser.fromJson(responseObject, RpcResponse.class);
-            } catch (IOException e) {
-                // This indicates a connection or serialization error, which is critical.
-                log.error("CLIENT error during call to {}:{}. Error: {}", host, port, e.getMessage());
-                // We should probably close the connection and let the caller decide to retry.
-                closeQuietly();
-                throw new RpcException("Failed to complete RPC call", e);
-            }
-        } finally {
-            lock.unlock();
+    public synchronized RpcResponse send(String request) throws RpcException {
+        if (closed) {
+            throw new RpcException("Client is closed.");
         }
+        try {
+            out.write(request);
+            out.newLine();
+            out.flush();
+
+            String responseObject = in.readLine();
+            return Parser.fromJson(responseObject, RpcResponse.class);
+        } catch (IOException e) {
+            // This indicates a connection or serialization error, which is critical.
+            log.error("CLIENT error during call to {}:{}. Error: {}", host, port, e.getMessage());
+            // We should probably close the connection and let the caller decide to retry.
+            closeQuietly();
+            throw new RpcException("Failed to complete RPC call", e);
+        }
+    }
+
+    public RpcResponse call(String command) throws RpcException {
+        int idx = command.indexOf(' ');
+        String operation = idx != -1 ? command.substring(0, idx) : command;
+
+        try {
+            connectWithRetry();
+        } catch (IOException e) {
+            throw new RpcException("Unable to connect to server", e);
+        }
+
+        NodeInfo info = MemoraNode.getInfo();
+        Long version = null;
+        if (Objects.nonNull(info) && info.getNodeType().equals(NodeType.PRIMARY) ) {
+            version = Version.get();
+        }
+
+        RpcRequest request = RpcRequest.builder()
+                .operation(operation)
+                .version(version)
+                .command(command)
+                .build();
+        
+        return send(Parser.toJson(request));
     }
 
     public RpcResponse callWithoutError(String request) {
@@ -117,6 +142,10 @@ public class MemoraClient implements Closeable {
 
     public RpcResponse getNodeId() {
         return call("INFO NODE ID");
+    }
+
+    public RpcResponse getNodeInfo() {
+        return call("INFO NODE ALL");
     }
 
     public RpcResponse primarize(String host, int port) {
@@ -136,7 +165,7 @@ public class MemoraClient implements Closeable {
         return put(key, value, -1);
     }
 
-    public boolean put(Map<String, CacheEntry> entries) {
+    public boolean put(List<CacheEntry> entries) {
         if (entries.isEmpty()) {
             return true;
         }
@@ -146,9 +175,8 @@ public class MemoraClient implements Closeable {
         builder.append("PUT");
         int soFar = 0;
         boolean itemAdded = false;
-        for (Map.Entry<String, CacheEntry> entry : entries.entrySet()) {
-            CacheEntry item = entry.getValue();
-            builder.append(String.format(" %s %s EXAT %d", entry.getKey(), item.getValue(), item.getTtl()));
+        for (CacheEntry item : entries) {
+            builder.append(String.format(" %s %s EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
             itemAdded = true;
             if (++soFar >= PUT_BATCH_SIZE) {
                 String request = builder.toString();
@@ -183,7 +211,7 @@ public class MemoraClient implements Closeable {
     }
 
     // This is the original, blocking method.
-    public boolean put(Map<String, CacheEntry> entries, ExecutorService threadPool) {
+    public boolean put(Collection<CacheEntry> entries, ExecutorService threadPool) {
         // For simple blocking behavior, we can call the async version and wait for its result.
         return putAsync(entries, threadPool).join();
     }
@@ -197,7 +225,7 @@ public class MemoraClient implements Closeable {
      * @return A CompletableFuture that will complete with 'true' if all batches
      * (including retries) were successful, and 'false' otherwise.
      */
-    public CompletableFuture<Boolean> putAsync(Map<String, CacheEntry> entries, ExecutorService pool) {
+    public CompletableFuture<Boolean> putAsync(Collection<CacheEntry> entries, ExecutorService pool) {
         if (entries == null || entries.isEmpty()) {
             return CompletableFuture.completedFuture(true);
         }
@@ -206,9 +234,8 @@ public class MemoraClient implements Closeable {
         StringBuilder builder = new StringBuilder("PUT");
         int soFar = 0;
 
-        for (Map.Entry<String, CacheEntry> entry : entries.entrySet()) {
-            CacheEntry item = entry.getValue();
-            builder.append(String.format(" %s %s EXAT %d", entry.getKey(), item.getValue(), item.getTtl()));
+        for (CacheEntry item: entries) {
+            builder.append(String.format(" %s %s EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
             
             if (++soFar >= PUT_BATCH_SIZE) {
                 batchCommands.add(builder.toString());

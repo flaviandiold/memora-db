@@ -1,6 +1,7 @@
 package com.memora.services;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,11 +46,11 @@ public class BucketManager {
     }
 
     public boolean isKeyInSelf(String key) {
-        return bucketMap.isBucketInNode(nodeId, getBucketIdByKey(key));
+        return bucketMap.isBucketInNode(nodeId, getBucketIdByKey(key).getBucketId());
     }
 
     public Bucket getBucket(String key) {
-        String bucketId = getBucketIdByKey(key);
+        String bucketId = getBucketIdByKey(key).getBucketId();
         Bucket bucket = buckets.get(bucketId);
         if (Objects.isNull(bucket)) {
             throw new IllegalStateException("Bucket not found for key: " + key);
@@ -57,9 +58,9 @@ public class BucketManager {
         return bucket;
     }
 
-    private String getBucketIdByKey(String key) {
+    private BucketInfo getBucketIdByKey(String key) {
         int index = routingService.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
-        return getBucketInfo(index).getBucketId();
+        return getBucketInfo(index);
     }
 
     private BucketInfo getBucketInfo(int index) {
@@ -81,18 +82,17 @@ public class BucketManager {
         return bucket.get(key);
     }
 
-    public void put(final String key, final CacheEntry value) {
-        Bucket bucket = getBucket(key);
-        bucket.put(key, value);
+    public void put(final CacheEntry entry) {
+        Bucket bucket = getBucket(entry.getKey());
+        bucket.put(entry);
     }
 
-    public void putAll(final Map<String, CacheEntry> entries) {
-        Map<Bucket, Map<String, CacheEntry>> entriesOrderedByBuckets = new HashMap<>();
-        for (Entry<String, CacheEntry> entry : entries.entrySet()) {
+    public void putAll(final Collection<CacheEntry> entries) {
+        Map<Bucket, List<CacheEntry>> entriesOrderedByBuckets = new HashMap<>();
+        for (CacheEntry entry : entries) {
             String key = entry.getKey();
-            CacheEntry value = entry.getValue();
             Bucket bucket = getBucket(key);
-            entriesOrderedByBuckets.computeIfAbsent(bucket, k -> new HashMap<>()).put(key, value);
+            entriesOrderedByBuckets.computeIfAbsent(bucket, k -> new ArrayList<>()).add(entry);
         }
         entriesOrderedByBuckets.forEach(
             (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket)
@@ -116,5 +116,14 @@ public class BucketManager {
             String bucketId = bucketInfo.getBucketId();
             addBucket(bucketId);
         });
+    }
+
+    public Map<String, List<String>> getKeyToNodeMap(List<String> keys) {
+        Map<String, List<String>> keyToNodeMap = new HashMap<>();
+        for (String key: keys) {
+            BucketInfo bucketInfo = getBucketIdByKey(key);
+            keyToNodeMap.computeIfAbsent(bucketInfo.getNodeId(), v -> new ArrayList<>()).add(key);
+        }
+        return keyToNodeMap;
     }
 }

@@ -7,8 +7,6 @@ services:
     ports:
       - "9090:9090"
       - "5005:5005"
-    environment:
-      - NODE_REPLICAS=memora-node-2:9090,memora-node-3
     networks:
       memoranet:
         aliases:
@@ -19,6 +17,9 @@ services:
     container_name: memora-node-2
     ports:
       - "9091:9090"
+      - "5006:5005"
+    environment:
+      - NODE_REPLICAS=memora-node-3
     networks:
       memoranet:
         aliases:
@@ -29,6 +30,7 @@ services:
     container_name: memora-node-3
     ports:
       - "9092:9090"
+      - "5007:5005"
     networks:
       memoranet:
         aliases:

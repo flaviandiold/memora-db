@@ -2,6 +2,7 @@ package com.memora.services;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -43,19 +44,19 @@ public class ReplicationManager {
         this.inSyncReplicas = new ArrayList<>();
     }
 
-    public void put(String key, CacheEntry value) {
+    public void put(CacheEntry entry) {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
         executeAsync(replicas, replica -> {
             try {
                 return routingService.getOrCreate(replica)
-                        .put(key, value.getValue(), value.getTtl());
+                        .put(entry.getKey(), entry.getValue(), entry.getTtl());
             } catch (Exception e) {
                 return false;
             }
         });
     }
 
-    public void putAll(Map<String, CacheEntry> entries) {
+    public void putAll(Collection<CacheEntry> entries) {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
         executeAsync(replicas, replica -> {
             try {
@@ -99,7 +100,7 @@ public class ReplicationManager {
 
     private <T> CompletableFuture<Boolean> executeAsync(List<T> data, Function<T, Boolean> task) {
         if (data == null || data.isEmpty()) {
-            log.warn("No data provided for async operation '{}', completing as success.");
+            log.warn("No data provided for replication operation '{}', completing as success.");
             return CompletableFuture.completedFuture(true);
         }
 

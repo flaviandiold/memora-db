@@ -1,12 +1,16 @@
 package com.memora.services;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
+import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
+import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 
 import lombok.extern.slf4j.Slf4j;
@@ -74,8 +78,14 @@ public final class ClusterOrchestrator {
                     }
                 }
             }
-            final RpcResponse response = client.getNodeId();
-            final String replicaId = response.getResponse();
+            final RpcResponse response = client.getNodeInfo();
+            final NodeInfo replicaInfo = Parser.fromJson(response.getResponse(), NodeInfo.class);
+            if (replicaInfo.getNodeType().equals(NodeType.PRIMARY)) {
+                throw new RuntimeException("Cannot primarize to a primary node");
+            }
+
+            log.info("Primarizing to replica: {}:{}", replicaInfo.getHost(), replicaInfo.getPort());
+            final String replicaId = replicaInfo.getNodeId();
 
             /**
              * Removing current node as replica
@@ -116,8 +126,10 @@ public final class ClusterOrchestrator {
                 }
             }
             currentNode.setNodeType(NodeType.REPLICA);
-            final RpcResponse response = client.getNodeId();
-            final String primaryId = response.getResponse();
+            final RpcResponse response = client.getNodeInfo();
+            final NodeInfo nodeInfo = Parser.fromJson(response.getResponse(), NodeInfo.class);
+            // if 
+            final String primaryId = nodeInfo.getNodeId();
             final String replicaId = currentNode.getNodeId();
             if (clusterMap.isPrimaryOf(replicaId, primaryId)) return;
             final NodeInfo primary = NodeInfo.create(primaryId, host, port);
@@ -138,6 +150,32 @@ public final class ClusterOrchestrator {
             log.error("Failed to replicate to {}:{} {}", host, port, e.getMessage());
             throw new RuntimeException(e);
         }
+    }
+
+    public RpcResponse forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
+        for (String nodeId : entriesByNode.keySet()) {
+            if (!clusterMap.containsNode(nodeId)) {
+                return RpcResponse.BAD_REQUEST("Node " + nodeId + " not found in cluster");
+            }
+        }
+        List<String> failedKeys = new ArrayList<>();
+        for (String nodeId : entriesByNode.keySet()) {
+            List<CacheEntry> entries = entriesByNode.get(nodeId);
+            boolean allDone = routingService.getClient(nodeId).put(entries);
+            if (!allDone) {
+                failedKeys.addAll(entries.stream().map(CacheEntry::getKey).toList());
+            }
+        }
+        if (failedKeys.isEmpty()) {
+            return RpcResponse.OK;
+        } else {
+            return RpcResponse.PARTIAL_FULFILLMENT("Failed to put keys: " + String.join(", ", failedKeys));
+        }
+    }
+
+    public RpcResponse forwardToPrimary(String request) {
+        String primaryId = clusterMap.getMyPrimary(currentNode.getNodeId()).getNodeId();
+        return routingService.getClient(primaryId).call(request);
     }
 
     public void buildCluster() {

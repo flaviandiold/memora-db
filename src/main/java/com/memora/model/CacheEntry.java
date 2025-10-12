@@ -2,6 +2,7 @@ package com.memora.model;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CacheEntry {
 
-    private final String value;
+    @NonNull private final String key;
+    @NonNull private final String value;
     private final long ttl;
 }

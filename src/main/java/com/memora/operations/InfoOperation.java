@@ -15,6 +15,7 @@ public class InfoOperation extends Operation {
     private static final String CLUSTER_SUB_COMMAND = "CLUSTER";
     private static final String MAP = "MAP";
     private static final String ID = "ID";
+    private static final String ALL = "ALL";
     private static final String MAX_QPS = "MAX_QPS";
     private static final String CURRENT_QPS = "QPS";
 
@@ -27,7 +28,7 @@ public class InfoOperation extends Operation {
 
     @Override
     public RpcResponse execute(RpcRequest request) {
-        String command = request.command();
+        String command = request.getCommand();
         String[] parts = command.split(" ");
         if (!INFO_COMMAND.equalsIgnoreCase(parts[0])) {
             throw new IllegalArgumentException("Invalid command for InfoCommand: " + command);
@@ -40,9 +41,10 @@ public class InfoOperation extends Operation {
         return switch (parts[1].toUpperCase()) {
             case NODE_SUB_COMMAND -> {
                 yield switch (parts[2].toUpperCase()) {
-                    case ID -> RpcResponse.OK(node.getInfo().getNodeId());
-                    case MAX_QPS -> RpcResponse.OK(String.valueOf(node.getInfo().getMaxQps()));
-                    case CURRENT_QPS -> RpcResponse.OK(String.valueOf(node.getInfo().getCurrentQps()));
+                    case ID -> RpcResponse.OK(MemoraNode.getInfo().getNodeId());
+                    case ALL -> RpcResponse.OK(Parser.toJson(MemoraNode.getInfo()));
+                    case MAX_QPS -> RpcResponse.OK(String.valueOf(MemoraNode.getInfo().getMaxQps()));
+                    case CURRENT_QPS -> RpcResponse.OK(String.valueOf(MemoraNode.getInfo().getCurrentQps()));
                     default -> RpcResponse.UNSUPPORTED_OPERATION("Invalid sub-command for InfoCommand " + parts[2]);
                 };
             }
@@ -53,7 +55,7 @@ public class InfoOperation extends Operation {
                 };
             }
             case CLUSTER_SUB_COMMAND -> {
-                if (NodeType.STANDALONE.equals(node.getInfo().getNodeType())) yield RpcResponse.UNSUPPORTED_OPERATION("Node is standalone");
+                if (NodeType.STANDALONE.equals(MemoraNode.getInfo().getNodeType())) yield RpcResponse.UNSUPPORTED_OPERATION("Node is standalone");
                 yield switch (parts[2].toUpperCase()) {
                     case MAP -> RpcResponse.OK(Parser.toJson(node.getClusterMap()));
                     default -> RpcResponse.UNSUPPORTED_OPERATION("Invalid sub-command for InfoCommand " + parts[2]);

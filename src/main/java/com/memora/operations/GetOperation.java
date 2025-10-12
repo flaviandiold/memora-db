@@ -24,7 +24,7 @@ public class GetOperation extends Operation {
 
     @Override
     public RpcResponse execute(RpcRequest request) {
-        String[] parts = request.command().split(" ");
+        String[] parts = request.getCommand().split(" ");
 
         if (!parts[0].equalsIgnoreCase(GET_COMMAND)) {
             throw new IllegalCallerException("Invalid command for GetCommand");

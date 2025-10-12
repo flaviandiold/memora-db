@@ -3,6 +3,7 @@ package com.memora.store;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.memora.core.Version;
 import com.memora.model.RpcRequest;
 
 public class WAL {
@@ -13,7 +14,8 @@ public class WAL {
     }
 
     public static void log(RpcRequest request) {
-        wal.put(request.version(), request.command());
+        long version = Version.increment();
+        wal.put(version, request.getCommand());
     }
 
     public static String get(long version) {

@@ -1,9 +1,11 @@
 package com.memora.services;
 
+import java.util.Collection;
 import java.util.Map;
 
 import com.google.inject.Inject;
 import com.memora.enums.Operations;
+import com.memora.model.CacheEntry;
 import com.memora.model.RpcRequest;
 import com.memora.model.RpcResponse;
 import com.memora.operations.DelOperation;
@@ -41,14 +43,10 @@ public class CommandExecutor {
 
     }
 
-    public boolean isStream() {
-        return true;
-    }
-
     public RpcResponse execute(RpcRequest request) {
         try {
             log.info("Executing request: {}", request);
-            Operations operation = Operation.commandOf(request.operation());
+            Operations operation = Operation.commandOf(request.getOperation());
             return commands.get(operation).execute(request);
         } catch (Exception e) {
             log.error("Error executing request: {}", request, e);
