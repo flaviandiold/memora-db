@@ -5,6 +5,7 @@ import java.net.InetSocketAddress;
 import java.util.Objects;
 
 import com.memora.enums.NodeType;
+import com.memora.utils.QPS;
 
 import lombok.Data;
 
@@ -18,8 +19,7 @@ public final class NodeInfo implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String nodeId;
-    private final String host;
-    private final int port;
+    private final NodeBase nodeBase;
 
     private NodeType nodeType;
     private Status status;
@@ -36,8 +36,7 @@ public final class NodeInfo implements Serializable {
         InetSocketAddress address = new InetSocketAddress(host, port);
         if (address.isUnresolved()) throw new RuntimeException("Invalid address: " + address);
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId cannot be null");
-        this.host = address.getAddress().getHostAddress();
-        this.port = address.getPort();
+        this.nodeBase = new NodeBase(address);
         this.epoch = epoch;
         this.heartbeatCounter = heartbeatCounter;
         this.nodeType = Objects.requireNonNull(nodeType, "nodeType cannot be null");
@@ -46,15 +45,19 @@ public final class NodeInfo implements Serializable {
     }
 
     public static NodeInfo create(String nodeId, String host, int port) {
-        return create(nodeId, host, port, 0, 0, Status.ALIVE, System.currentTimeMillis());
+        return create(nodeId, host, port, NodeType.STANDALONE);
     }
 
-    public static NodeInfo create(String nodeId, String host, int port, long epoch, int heartbeatCounter, Status status, long lastUpdateTime) {
-        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, NodeType.STANDALONE, status, lastUpdateTime);
+    public static NodeInfo create(String nodeId, String host, int port, NodeType nodeType) {
+        return create(nodeId, host, port, nodeType, 0, 0, Status.ALIVE, System.currentTimeMillis());
+    }
+
+    public static NodeInfo create(String nodeId, String host, int port, NodeType nodeType, long epoch, int heartbeatCounter, Status status, long lastUpdateTime) {
+        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, nodeType, status, lastUpdateTime);
     }
 
     public boolean equals(String host, int port) {
-        return this.host.equals(host) && this.port == port;
+        return this.nodeBase.equals(host, port);
     }
 
     public boolean isPrimary() {
@@ -63,5 +66,21 @@ public final class NodeInfo implements Serializable {
 
     public boolean isReplica() {
         return NodeType.REPLICA.equals(nodeType);
+    }
+
+    public String getHost() {
+        return nodeBase.getHost();
+    }
+
+    public int getPort() {
+        return nodeBase.getPort();
+    }
+
+    public int getMaxQps() {
+        return QPS.getInstance().getMax();
+    }
+
+    public int getCurrentQps() {
+        return QPS.getInstance().get();
     }
 }

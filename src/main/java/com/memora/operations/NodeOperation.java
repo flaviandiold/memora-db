@@ -38,7 +38,7 @@ public class NodeOperation extends Operation {
             return RpcResponse.BAD_REQUEST("NODE command requires at least 2 arguments");
         }
 
-        final String address[] = parts[2].split("@");
+        final String address[] = parts[2].split(":");
         if (address.length < 2) {
             return RpcResponse.BAD_REQUEST("Invalid address for NodeCommand: " + parts[2]);
         }

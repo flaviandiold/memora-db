@@ -44,6 +44,10 @@ public final class ClusterOrchestrator {
         return clusterMap;
     }
 
+    // public RpcResponse forwardToPrimary(RpcRequest request) {
+
+    // }
+
     /**
      * Function that will make the given node at host and port
      * as a replica, and will start streaming data to it.
@@ -131,7 +135,7 @@ public final class ClusterOrchestrator {
             ClusterMap map = Parser.fromJson(primaryMap, ClusterMap.class);
             clusterMap.merge(map);
         } catch (IOException | RuntimeException e) {
-            log.error("Failed to replicate to {}:{}", host, port);
+            log.error("Failed to replicate to {}:{} {}", host, port, e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -141,7 +145,6 @@ public final class ClusterOrchestrator {
             log.info("Cluster already built.");
             return;
         }
-        log.info("Building cluster...");
         for (ThreadPool pool : ThreadPool.getAllThreadPool()) {
             if (pool.isCluster()) {
                 threadPoolService.createThreadPool(pool);

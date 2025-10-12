@@ -57,6 +57,9 @@ public class PutOperation extends Operation {
         // Add the last entry
         entries.put(prevKey, previousEntry.ttl(DEFAULT_EXPIRY).build());
         
+        // if (node.getInfo().isReplica()) {
+        //     return node.forwardToPrimary(request);
+        // }
         WAL.log(request);
         if (entries.size() == 1) {
             node.put(prevKey, entries.get(prevKey));

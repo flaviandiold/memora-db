@@ -2,6 +2,9 @@ package com.memora.modules;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 import com.google.inject.AbstractModule;
@@ -9,6 +12,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
+import com.memora.model.NodeBase;
 import com.memora.utils.ULID;
 
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +46,30 @@ public class EnvironmentModule extends AbstractModule {
     @Singleton
     public static int getPort() {
         return Integer.parseInt(getOrDefault(Constants.NODE_PORT, Constants.DEFAULT_PORT));
+    }
+
+    @Provides
+    @Named(Constants.MY_REPLICAS)
+    @Singleton
+    public List<NodeBase> getMyReplicas() {
+        String myReplicas = getEnv(Constants.MY_REPLICAS);
+        if (!Objects.isNull(myReplicas)) {
+            return Arrays.stream(myReplicas.split("\\s*,\\s*"))
+                .<NodeBase>map(replica -> {
+                    String[] parts = replica.split(":");
+                    if (parts.length == 1) {
+                        return NodeBase.create(parts[0], Integer.parseInt(Constants.DEFAULT_PORT));
+                    } else if (parts.length == 2) {
+                        return NodeBase.create(parts[0], Integer.parseInt(parts[1]));
+                    } else {
+                        log.warn("Invalid replica format: {}", replica);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        }
+        return Collections.emptyList();
     }
 
     @Provides

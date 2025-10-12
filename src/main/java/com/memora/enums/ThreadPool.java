@@ -8,14 +8,26 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Getter
 public enum ThreadPool {
-    GOSSIP_THREAD_POOL("gossip-thread-pool", 100, true),
-    CLIENT_THREAD_POOL("client-thread-pool", 100, true),
-    REPLICATION_THREAD_POOL("replication-thread-pool", 100, true),
-    SERVER_THREAD_POOL("server-thread-pool", 100, false);
+    GENERAL_THREAD_POOL("general-thread", 5, false, true, Thread.MIN_PRIORITY),
+    SERVER_THREAD_POOL("server-thread", 7, false),
+    GOSSIP_THREAD_POOL("gossip-thread", 5),
+    CLIENT_THREAD_POOL("client-thread", 5),
+    REPLICATION_THREAD_POOL("replication-thread", 5);
 
-    private final String name;
+
+    private final String threadName;
     private final int size;
     private final boolean isCluster;
+    private final boolean isDaemon;
+    private final int priority;
+
+    ThreadPool(String threadName, int size) {
+        this(threadName, size, true, false, Thread.NORM_PRIORITY);
+    }
+
+    ThreadPool(String threadName, int size, boolean isCluster) {
+        this(threadName, size, isCluster, false, Thread.NORM_PRIORITY);
+    }
 
     public static List<ThreadPool> getAllThreadPool() {
         return List.of(ThreadPool.values());

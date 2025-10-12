@@ -38,6 +38,7 @@ public class MemoraClient implements Closeable {
     private final ReentrantLock lock = new ReentrantLock();
     private final int PUT_BATCH_SIZE = 50;
     private final int MAX_RETRIES = 3;
+    private final int MAX_CONNECT_ATTEMPTS = 3;
 
     private Socket socket;
     private BufferedWriter out;
@@ -50,21 +51,31 @@ public class MemoraClient implements Closeable {
         connectWithRetry();
     }
 
-    private void connectWithRetry() throws IOException {
+    private void connect() throws IOException {
         if (socket == null || !socket.isConnected() || socket.isClosed()) {
-            try {
-                socket = new Socket();
-                socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-                socket.setKeepAlive(true);
+            socket = new Socket();
+            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+            socket.setKeepAlive(true);
 
-                // Order is important: create output stream first and flush.
-                out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-                out.flush(); // send header immediately
-                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                log.info("CLIENT connected to {}:{}", getHost(), getPort());
+            // Order is important: create output stream first and flush.
+            out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            out.flush(); // send header immediately
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        }
+    }
+
+    private void connectWithRetry() throws IOException {
+        int attempts = 0;
+        while (attempts < MAX_CONNECT_ATTEMPTS) {
+            try {
+                connect();
+                return;
             } catch (IOException e) {
-                log.error("CLIENT failed to connect to {}:{}. Error: {}", host, port, e.getMessage());
-                throw e; // Propagate a checked exception
+                attempts++;
+                log.warn("Connection attempt {}/{} to {}:{} failed: {}", attempts, MAX_CONNECT_ATTEMPTS, host, port, e.getMessage());
+                if (attempts >= MAX_CONNECT_ATTEMPTS) {
+                    throw e;
+                }
             }
         }
     }

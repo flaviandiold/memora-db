@@ -40,7 +40,6 @@ public class MemoraChannel extends ChannelInitializer {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RpcRequest request) throws Exception {
-            log.info("Received request: '{}'", request);
             RpcResponse response = commandExecutor.execute(request);
             ctx.writeAndFlush(response);
         }

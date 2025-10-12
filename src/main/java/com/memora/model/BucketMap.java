@@ -15,10 +15,17 @@ public class BucketMap {
 
     private int numberOfActiveBuckets;
     private List<BucketInfo> allBuckets;
-    private final ConcurrentHashMap<String, TreeSet<String>> nodeToBucketsMap = new ConcurrentHashMap<>();
-    private final PriorityBlockingQueue<BucketInfo> bucketInfoList = new PriorityBlockingQueue<>(60, (a, b) -> {
-        return a.getBucketId().compareTo(b.getBucketId());
-    });
+    private final ConcurrentHashMap<String, TreeSet<String>> nodeToBucketsMap;
+    private final PriorityBlockingQueue<BucketInfo> bucketInfoList;
+
+    public BucketMap() {
+        this.numberOfActiveBuckets = 0;
+        this.allBuckets = List.of();
+        nodeToBucketsMap = new ConcurrentHashMap<>();
+        bucketInfoList = new PriorityBlockingQueue<>(60, (a, b) -> {
+            return a.getBucketId().compareTo(b.getBucketId());
+        });
+    }
 
     public void increaseNumberOfActiveBuckets(int incrementBy) {
         numberOfActiveBuckets += incrementBy;

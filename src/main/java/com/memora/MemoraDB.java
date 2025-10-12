@@ -4,6 +4,7 @@ import static com.google.inject.Guice.createInjector;
 
 import com.google.inject.Inject;
 import com.google.inject.Stage;
+import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
 import com.memora.modules.CommandModule;
 import com.memora.modules.EnvironmentModule;
@@ -16,8 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 public class MemoraDB {
 
     @Inject
-    public MemoraDB(MemoraServer server) {
-        initiate(server);
+    public MemoraDB(MemoraNode memoraNode, MemoraServer server) {
+        initiate(memoraNode, server);
     }
 
     public static void main(String[] args) {
@@ -29,14 +30,12 @@ public class MemoraDB {
                     new CommandModule(),
                     new ServiceModule()
             );
-    
-            Thread.currentThread().join();
         } catch (Exception e) {
             log.error("Error starting MemoraDB: {}", e.getMessage());
         }
     }
 
-    private void initiate(MemoraServer server) {
+    private void initiate(MemoraNode node, MemoraServer server) {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
@@ -47,8 +46,7 @@ public class MemoraDB {
             }));
 
             log.info("Starting MemoraDB...");
-            server.start();
-            log.info("MemoraDB started successfully.");
+            server.start(node::start);
         } catch (InterruptedException e) {
             log.error("MemoraDB startup interrupted: {}", e.getMessage());
             Thread.currentThread().interrupt();

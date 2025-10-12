@@ -15,6 +15,8 @@ public class InfoOperation extends Operation {
     private static final String CLUSTER_SUB_COMMAND = "CLUSTER";
     private static final String MAP = "MAP";
     private static final String ID = "ID";
+    private static final String MAX_QPS = "MAX_QPS";
+    private static final String CURRENT_QPS = "QPS";
 
     private final MemoraNode node;
 
@@ -39,6 +41,8 @@ public class InfoOperation extends Operation {
             case NODE_SUB_COMMAND -> {
                 yield switch (parts[2].toUpperCase()) {
                     case ID -> RpcResponse.OK(node.getInfo().getNodeId());
+                    case MAX_QPS -> RpcResponse.OK(String.valueOf(node.getInfo().getMaxQps()));
+                    case CURRENT_QPS -> RpcResponse.OK(String.valueOf(node.getInfo().getCurrentQps()));
                     default -> RpcResponse.UNSUPPORTED_OPERATION("Invalid sub-command for InfoCommand " + parts[2]);
                 };
             }

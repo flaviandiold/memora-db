@@ -1,8 +1,11 @@
 package com.memora.core;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.google.inject.Inject;
+import com.memora.enums.ThreadPool;
+import com.memora.services.ThreadPoolService;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -11,31 +14,27 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@RequiredArgsConstructor(onConstructor = @__({@Inject}))
 public class MemoraServer implements AutoCloseable {
 
     private final String host;
     private final int port;
     private final MemoraChannel memoraChannel;
+    private final ThreadPoolService threadPoolService;
 
     private Channel serverChannel;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
-    @Inject
-    public MemoraServer(String host, int port, MemoraChannel memoraChannel) {
-        this.host = host;
-        this.port = port;
-        this.memoraChannel = memoraChannel;
-    }
-
-    public void start() throws InterruptedException {
-        // ThreadPool serverPool = ThreadPool.SERVER_THREAD_POOL;
+    public void start(Runnable callback) throws InterruptedException {
+        ThreadPool serverPool = ThreadPool.SERVER_THREAD_POOL;
         bossGroup = new NioEventLoopGroup(); // accepts incoming connections
-        workerGroup = new NioEventLoopGroup(); // handles traffic
-        // workerGroup = new NioEventLoopGroup(serverPool.getSize(), ThreadPoolService.getThreadPool(ThreadPool.SERVER_THREAD_POOL)); // handles traffic
+        workerGroup = new NioEventLoopGroup(serverPool.getSize(),
+            threadPoolService.getThreadPool(ThreadPool.SERVER_THREAD_POOL)); // handles traffic
         try {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
@@ -46,7 +45,9 @@ public class MemoraServer implements AutoCloseable {
 
             ChannelFuture future = bootstrap.bind(host, port).sync();
             serverChannel = future.channel();
-            log.info("Memora Server started on port ", port);
+            log.info("Memora Server started on port {}", port);
+
+            callback.run();
 
             future.channel().closeFuture().sync();
         } finally {
