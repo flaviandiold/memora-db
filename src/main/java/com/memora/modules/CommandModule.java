@@ -4,60 +4,60 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.memora.core.MemoraNode;
-import com.memora.operations.DelOperation;
-import com.memora.operations.GetOperation;
-import com.memora.operations.InfoOperation;
-import com.memora.operations.PutOperation;
-import com.memora.operations.NodeOperation;
-import com.memora.operations.UnknownOperation;
+import com.memora.executors.DelExecutor;
+import com.memora.executors.GetExecutor;
+import com.memora.executors.InfoExecutor;
+import com.memora.executors.NodeExecutor;
+import com.memora.executors.PutExecutor;
+import com.memora.executors.UnknownExecutor;
 
 public class CommandModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public GetOperation provideGetOperation(
+    public GetExecutor provideGetExecutor(
             final MemoraNode node
     ) {
-        return new GetOperation(node);
+        return new GetExecutor(node);
     }
 
     @Provides
     @Singleton
-    public PutOperation providePutOperation(
+    public PutExecutor providePutExecutor(
             final MemoraNode node
     ) {
-        return new PutOperation(node);
+        return new PutExecutor(node);
     }
 
     @Provides
     @Singleton
-    public DelOperation provideDelOperation(
+    public DelExecutor provideDelExecutor(
             final MemoraNode node
     ) {
-        return new DelOperation(node);
+        return new DelExecutor(node);
     }
 
     @Provides
     @Singleton
-    public NodeOperation provideNodeOperation(
+    public NodeExecutor provideNodeExecutor(
             final MemoraNode node
     ) {
-        return new NodeOperation(node);
+        return new NodeExecutor(node);
     }
 
     @Provides
     @Singleton
-    public InfoOperation provideInfoOperation(
+    public InfoExecutor provideInfoExecutor(
             MemoraNode node
     ) {
-        return new InfoOperation(node);
+        return new InfoExecutor(node);
     }
 
 
     @Provides
     @Singleton
-    public UnknownOperation provideUnknownOperation() {
-        return new UnknownOperation();
+    public UnknownExecutor provideUnknownExecutor() {
+        return new UnknownExecutor();
     }
 
 }

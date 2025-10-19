@@ -11,7 +11,7 @@ public enum ThreadPool {
     GENERAL_THREAD_POOL("general-thread", 5, false, true, Thread.MIN_PRIORITY),
     SERVER_THREAD_POOL("server-thread", 7, false, Thread.MAX_PRIORITY),
     GOSSIP_THREAD_POOL("gossip-thread", 5),
-    CLIENT_THREAD_POOL("client-thread", 5),
+    CLIENT_THREAD_POOL("client-thread", 7, true, Thread.MAX_PRIORITY),
     REPLICATION_THREAD_POOL("replication-thread", 5, Thread.MAX_PRIORITY);
 
 

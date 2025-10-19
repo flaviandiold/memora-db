@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -16,7 +15,6 @@ import com.memora.model.BucketInfo;
 import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
-import com.memora.model.RpcResponse;
 import com.memora.store.Bucket;
 import com.memora.utils.Parser;
 
@@ -27,18 +25,19 @@ public class ReplicationManager {
 
     private final NodeInfo currentNode;
     private final BucketManager bucketManager;
-    private final RoutingService routingService;
     private final ThreadPoolService threadPoolService;
+    private final ClientManager clientManager;
     private final ClusterMap clusterMap;
     private final ArrayList<NodeInfo> inSyncReplicas;
 
     private final ThreadPool pool = ThreadPool.REPLICATION_THREAD_POOL;
 
     @Inject
-    public ReplicationManager(NodeInfo currentNode, BucketManager bucketManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+    public ReplicationManager(NodeInfo currentNode, BucketManager bucketManager, ClientManager clientManager,
+        ThreadPoolService threadPoolService, ClusterMap clusterMap) {
         this.currentNode = currentNode;
         this.bucketManager = bucketManager;
-        this.routingService = routingService;
+        this.clientManager = clientManager;
         this.threadPoolService = threadPoolService;
         this.clusterMap = clusterMap;
         this.inSyncReplicas = new ArrayList<>();
@@ -48,7 +47,7 @@ public class ReplicationManager {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
         executeAsync(replicas, replica -> {
             try {
-                return routingService.getOrCreate(replica)
+                return clientManager.getOrCreate(replica)
                         .put(entry.getKey(), entry.getValue(), entry.getTtl());
             } catch (Exception e) {
                 return false;
@@ -60,7 +59,7 @@ public class ReplicationManager {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
         executeAsync(replicas, replica -> {
             try {
-                return routingService.getOrCreate(replica).put(entries, threadPoolService.getThreadPool(pool));
+                return clientManager.getOrCreate(replica).put(entries, threadPoolService.getThreadPool(pool));
             } catch (Exception e) {
                 return false;
             }
@@ -71,16 +70,16 @@ public class ReplicationManager {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
         executeAsync(replicas, replica -> {
             try {
-                return routingService.getOrCreate(replica).delete(key);
+                return clientManager.getOrCreate(replica).delete(key);
             } catch (Exception e) {
                 return false;
             }
         });
     }
 
-    public void replicateDataTo(NodeInfo replica) throws IOException {
+    public void replicateDataTo(NodeInfo replica) throws IOException, InterruptedException {
         // This call can throw an exception, so it's handled synchronously before the async part.
-        final MemoraClient client = routingService.getOrCreate(replica);
+        final MemoraClient client = clientManager.getOrCreate(replica);
 
         List<Bucket> buckets = bucketManager.getSelfBuckets();
 
@@ -133,14 +132,16 @@ public class ReplicationManager {
             });
     }
 
-    public void initiateReplicationOf(NodeInfo primary) throws IOException {
-        MemoraClient client = routingService.getOrCreate(primary);
+    public void initiateReplicationOf(NodeInfo primary) throws InterruptedException, IOException {
+        MemoraClient client = clientManager.getOrCreate(primary);
 
-        RpcResponse response = client.call("INFO BUCKET MAP");
-        List<BucketInfo> bucketInfo = Parser.fromJson(response.getResponse(), new TypeToken<List<BucketInfo>>() {
-        }.getType());
-        bucketManager.createFromPrimary(bucketInfo);
-        client.primarize(currentNode.getHost(), currentNode.getPort());
+        client.call("INFO BUCKET MAP").thenAcceptAsync(response -> {
+            List<BucketInfo> bucketInfo = Parser.fromJson(response.getResponse(), new TypeToken<List<BucketInfo>>() {
+            }.getType());
+            bucketManager.createFromPrimary(bucketInfo);
+            client.primarize(currentNode.getHost(), currentNode.getPort());
+
+        });
     }
 
     public void clearInSyncReplicas() {

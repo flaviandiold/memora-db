@@ -4,7 +4,9 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.Objects;
 
+import com.memora.enums.NodeState;
 import com.memora.enums.NodeType;
+import com.memora.exceptions.MemoraException;
 import com.memora.utils.QPS;
 
 import lombok.Data;
@@ -21,39 +23,38 @@ public final class NodeInfo implements Serializable {
     private final String nodeId;
     private final NodeBase nodeBase;
 
-    private NodeType nodeType;
-    private Status status;
+    private NodeType type;
+    private NodeState status;
     private long epoch;
     private int heartbeatCounter;
     private long lastUpdateTime;
     
-
-    public enum Status {
-        ALIVE, SUSPECT, FAILED
-    }
-
-    public NodeInfo(String nodeId, String host, int port, long epoch, int heartbeatCounter, NodeType nodeType, Status status, long lastUpdateTime) {
+    public NodeInfo(String nodeId, String host, int port, long epoch, int heartbeatCounter, NodeType type, NodeState status, long lastUpdateTime) {
         InetSocketAddress address = new InetSocketAddress(host, port);
-        if (address.isUnresolved()) throw new RuntimeException("Invalid address: " + address);
+        if (address.isUnresolved()) throw new MemoraException("Invalid address: " + address);
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId cannot be null");
         this.nodeBase = new NodeBase(address);
         this.epoch = epoch;
         this.heartbeatCounter = heartbeatCounter;
-        this.nodeType = Objects.requireNonNull(nodeType, "nodeType cannot be null");
+        this.type = Objects.requireNonNull(type, "type cannot be null");
         this.status = Objects.requireNonNull(status, "status cannot be null");
         this.lastUpdateTime = lastUpdateTime;
+    }
+
+    public static NodeInfo create(String nodeId, NodeBase base) {
+        return create(nodeId, base.getHost(), base.getPort(), NodeType.STANDALONE);
     }
 
     public static NodeInfo create(String nodeId, String host, int port) {
         return create(nodeId, host, port, NodeType.STANDALONE);
     }
 
-    public static NodeInfo create(String nodeId, String host, int port, NodeType nodeType) {
-        return create(nodeId, host, port, nodeType, 0, 0, Status.ALIVE, System.currentTimeMillis());
+    public static NodeInfo create(String nodeId, String host, int port, NodeType type) {
+        return create(nodeId, host, port, type, 0, 0, NodeState.ALIVE, System.currentTimeMillis());
     }
 
-    public static NodeInfo create(String nodeId, String host, int port, NodeType nodeType, long epoch, int heartbeatCounter, Status status, long lastUpdateTime) {
-        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, nodeType, status, lastUpdateTime);
+    public static NodeInfo create(String nodeId, String host, int port, NodeType type, long epoch, int heartbeatCounter, NodeState status, long lastUpdateTime) {
+        return new NodeInfo(nodeId, host, port, epoch, heartbeatCounter, type, status, lastUpdateTime);
     }
 
     public boolean equals(String host, int port) {
@@ -61,11 +62,11 @@ public final class NodeInfo implements Serializable {
     }
 
     public boolean isPrimary() {
-        return NodeType.PRIMARY.equals(nodeType);
+        return NodeType.PRIMARY.equals(type);
     }
 
     public boolean isReplica() {
-        return NodeType.REPLICA.equals(nodeType);
+        return NodeType.REPLICA.equals(type);
     }
 
     public String getHost() {

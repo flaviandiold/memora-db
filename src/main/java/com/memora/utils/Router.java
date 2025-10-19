@@ -1,51 +1,22 @@
-package com.memora.services;
+package com.memora.utils;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-
-import com.google.inject.Inject;
-import com.memora.core.MemoraClient;
-import com.memora.model.NodeInfo;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class RoutingService {
+public final class Router {
 
-    private final Map<String, MemoraClient> clientMap;
-
-
-    @Inject
-    public RoutingService() {
-        clientMap = new HashMap<>();
-    }
-
-    public void addClient(String nodeId, MemoraClient client) {
-        clientMap.put(nodeId, client);
-    }
-
-    public MemoraClient getOrCreate(NodeInfo node) throws IOException {
-        MemoraClient client = getClient(node.getNodeId());
-        if (client == null) {
-            client = new MemoraClient(node.getHost(), node.getPort());
-            addClient(node.getNodeId(), client);
-        }
-        return client;
-    }
-
-    public MemoraClient getClient(String nodeId) {
-        return clientMap.get(nodeId);
+    private Router() {
+        // private constructor to prevent instantiation
     }
 
     /**
      * Jump Consistent Hash (Lamping & Veach). Maps 64-bit key -> bucket in [0,
      * numBuckets).
      */
-    private int jumpConsistentHash(long key, int numBuckets) {
+    private static int jumpConsistentHash(long key, int numBuckets) {
         if (numBuckets <= 0)
             throw new IllegalArgumentException("numBuckets must be greater than 0");
         long b = -1, j = 0;
@@ -60,7 +31,7 @@ public class RoutingService {
     /**
      * Convenience method: hashes a String using MurmurHash3 (x64_128) and maps to a bucket.
      */
-    private int jumpConsistentHash(String key, int numBuckets) {
+    private static int jumpConsistentHash(String key, int numBuckets) {
         long hash64 = murmurHash3_x64_128(key.getBytes(StandardCharsets.UTF_8), 0);
         return jumpConsistentHash(hash64, numBuckets);
     }
@@ -70,7 +41,7 @@ public class RoutingService {
      * @param data input bytes
      * @param seed optional seed (can be 0 for default)
      */
-    private long murmurHash3_x64_128(byte[] data, int seed) {
+    private static long murmurHash3_x64_128(byte[] data, int seed) {
         final int length = data.length;
         final int nblocks = length >>> 4; // / 16
 
@@ -151,7 +122,7 @@ public class RoutingService {
         return h1;
     }
 
-    private long fmix64(long k) {
+    private static long fmix64(long k) {
         k ^= k >>> 33;
         k *= 0xff51afd7ed558ccdL;
         k ^= k >>> 33;
@@ -160,7 +131,7 @@ public class RoutingService {
         return k;
     }
 
-    public int getBucketIndex(String key, int numBuckets) {
+    public static int getBucketIndex(String key, int numBuckets) {
         int bucketIndex = jumpConsistentHash(key, numBuckets);
         log.info("Found bucket {} for key: {} out of {} buckets", bucketIndex, key, numBuckets);
         return bucketIndex;

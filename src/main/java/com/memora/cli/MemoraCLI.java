@@ -1,28 +1,55 @@
 package com.memora.cli;
 
-import java.util.Arrays;
+import java.io.IOException;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import com.google.inject.Injector;
+import com.google.inject.Stage;
 import com.memora.core.MemoraClient;
-import com.memora.model.RpcResponse;
+import com.memora.messages.RpcResponse;
+import com.memora.model.NodeBase;
+import com.memora.model.NodeInfo;
+import com.memora.modules.ClientModule;
 import com.memora.modules.EnvironmentModule;
+import com.memora.services.ClientManager;
+
+import static com.google.inject.Guice.createInjector;
 
 /**
  * Simple interactive CLI client for Memora.
  */
 public class MemoraCLI {
 
-    private MemoraCLI() {}
+    private static final String SELF = "memora-cli";
+
+    private Injector injector;
+    private MemoraClient client;
+
+    private MemoraCLI() {
+    }
+
+    private void inject() {
+        injector = createInjector(
+            Stage.PRODUCTION,
+            new ClientModule()
+        );
+    }
+
+    private void createClient(String host, int port) throws IOException, InterruptedException {
+        ClientManager manager = injector.getInstance(ClientManager.class);
+        NodeBase base = manager.getAddress(host, port);
+        client = manager.getOrCreate(NodeInfo.create(SELF, base));
+    }
 
     public static void main(String[] args) throws Exception {
         MemoraCLI cli = new MemoraCLI();
+
         String host;
         int port;
         System.out.println("Memora CLI Version 1.0");
-        System.out.println(Arrays.toString(args));
         if (args.length < 2) {
             host = EnvironmentModule.getHost();
             port = EnvironmentModule.getPort();
@@ -31,6 +58,8 @@ public class MemoraCLI {
             port = Integer.parseInt(args[1]);
         }
 
+        cli.inject();
+        cli.createClient(host, port);
         if (args.length > 2 && "concurrencyTest".equalsIgnoreCase(args[2])) {
             cli.runConcurrencyTest(host, port);
         } else {
@@ -38,18 +67,19 @@ public class MemoraCLI {
         }
 
     }
-    
-    private void initialize(String host, int port) {
+
+    private void initialize(String host, int port) throws IOException {
         System.out.println("Welcome to Memora CLI!");
         System.out.println("Type 'exit' to quit.");
-        try (Scanner scanner = new Scanner(System.in); MemoraClient client = new MemoraClient(host, port)) {
+
+        try (Scanner scanner = new Scanner(System.in);) {
             while (true) {
                 System.out.print("> ");
                 String input = scanner.nextLine().trim();
                 if ("exit".equalsIgnoreCase(input)) {
                     break;
                 }
-                RpcResponse result = client.call(input);
+                RpcResponse result = client.call(input).get();
                 System.out.println(result);
             }
         } catch (Exception e) {
@@ -66,16 +96,12 @@ public class MemoraCLI {
         for (int i = 0; i < numThreads; i++) {
             final int threadNum = i;
             executor.submit(() -> {
-                try (MemoraClient client = new MemoraClient(host, port)) {
-                    System.out.println("Thread " + threadNum + " started.");
-                    // Each thread makes a few calls
-                    for (int j = 0; j < 10000; j++) {
-                        String key = "key-" + threadNum + "-" + j;
-                        String value = "value-" + threadNum + "-" + j;
-                        client.put(key, value);
-                    }
-                } catch (Exception e) {
-                    System.err.println("Error in thread " + threadNum + ": " + e.getMessage());
+                System.out.println("Thread " + threadNum + " started.");
+                // Each thread makes a few calls
+                for (int j = 0; j < 10000; j++) {
+                    String key = "key-" + threadNum + "-" + j;
+                    String value = "value-" + threadNum + "-" + j;
+                    client.put(key, value);
                 }
             });
         }

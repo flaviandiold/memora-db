@@ -26,12 +26,18 @@ public class ThreadPoolService {
 
     public ExecutorService createThreadPool(ThreadPool pool) {
         String name = pool.getThreadName();
-        int size = pool.getSize();
-
         if (threadPoolMap.containsKey(name)) {
             log.warn("Thread pool with name {} already exists. Skipping creation.", name);
             return threadPoolMap.get(name);
         }
+
+        return threadPoolMap.put(name, createNewThreadPool(pool));
+    }
+
+    private ExecutorService createNewThreadPool(ThreadPool pool) {
+        String name = pool.getThreadName();
+        int size = pool.getSize();
+
         log.info("Creating thread pool with name {} and size {}", name, size);
         ThreadFactory threadFactory = new ThreadFactoryBuilder()
                 .setDaemon(pool.isDaemon())
@@ -39,7 +45,7 @@ public class ThreadPoolService {
                 .setNameFormat("memora-" + name + "-%d")
                 .build();
 
-        return threadPoolMap.put(name, Executors.newFixedThreadPool(size, threadFactory));
+        return Executors.newFixedThreadPool(size, threadFactory);
     }
 
     public <T> Future<T> submit(ThreadPool pool, Callable<T> task) {
@@ -78,7 +84,7 @@ public class ThreadPoolService {
     }
 
     public ExecutorService getThreadPool(ThreadPool pool) {
-        return threadPoolMap.computeIfAbsent(pool.getThreadName(), k -> createThreadPool(pool));
+        return threadPoolMap.computeIfAbsent(pool.getThreadName(), k -> createNewThreadPool(pool));
     }
 
     public void shutdown() {

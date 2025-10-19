@@ -8,11 +8,12 @@ import java.util.Objects;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.memora.enums.ThreadPool;
+import com.memora.messages.RpcRequest;
+import com.memora.messages.RpcResponse;
 import com.memora.model.BucketInfo;
 import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
-import com.memora.model.RpcResponse;
 import com.memora.model.NodeBase;
 import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
@@ -85,11 +86,11 @@ public class MemoraNode {
         return bucketManager.getAllBuckets();
     }
 
-    public RpcResponse forwardToPrimary(String request) {
+    public RpcResponse.Builder forwardToPrimary(RpcRequest request) {
         return getClusterOrchestrator().forwardToPrimary(request);
     }
 
-    public RpcResponse forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
+    public RpcResponse.Builder forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
         return getClusterOrchestrator().forwardPut(entriesByNode);
     } 
 
@@ -126,8 +127,8 @@ public class MemoraNode {
         return bucketManager.get(key);
     }
 
-    public void replicate(String host, int port) {
-        getClusterOrchestrator().replicate(host, port);
+    public void replicate(String host, int port, long clusterEpoch) {
+        getClusterOrchestrator().replicate(host, port, clusterEpoch);
     }
 
     public void primarize(String host, int port) {

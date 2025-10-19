@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package com.memora.messages;
+
+option java_multiple_files = true;
+option java_package = "com.memora.messages";
+
+// Enum for the response status, used within response messages.
+enum RpcStatus {
+  UNSUPPORTED_OPERATION = 0;
+  OK = 1;
+  ERROR = 2;
+  NOT_FOUND = 3;
+  BAD_REQUEST = 4;
+  PARTIAL_FULFILLMENT = 5;
+}
+
+// A reusable message to represent a node's address.
+message NodeAddress {
+  string host = 1;
+  int32 port = 2; // int32 is sufficient for ports.
+}
+
+// A message for commands that only need a key.
+message KeyCommand {
+  string key = 1;
+}
+
+// A message for commands needing a key, value, and optional expiry.
+message PutCommand {
+  string key = 1;
+  bytes value = 2;
+  oneof expiry {
+    int64 expire_in_seconds = 3;
+    int64 expire_at_timestamp = 4;
+  }
+}
+
+// A wrapper for a batch of KeyCommands.
+message KeyCommandBatch {
+  repeated KeyCommand commands = 1;
+}
+
+// A wrapper for a batch of KeyValueCommands.
+message PutCommandBatch {
+  repeated PutCommand commands = 1;
+}
+
+
+message NodeCommand {
+  // Command to instruct a node to become a primary.
+  message PrimarizeCommand {
+      repeated NodeAddress replicas = 1;
+  }
+
+  // Command to instruct a node to become a replica of another.
+  message ReplicateCommand {
+    NodeAddress primary = 1;
+  }
+
+  oneof command {
+    PrimarizeCommand primarize = 1;
+    ReplicateCommand replicate = 2;
+  }
+}
+
+message InfoCommand {
+  // Request info about a specific node.
+  message NodeInfoRequest {
+    enum DataType {
+      DATA_TYPE_UNSPECIFIED = 0;
+      ALL = 1;
+      ID = 2;
+      MAX_QPS = 3;
+      CURRENT_QPS = 4;
+    }
+
+    DataType type = 1;
+  }
+
+  // Request info about buckets.
+  message BucketInfoRequest {
+    enum DataType {
+      DATA_TYPE_UNSPECIFIED = 0;
+      MAP = 1; // Get the full bucket-to-node map.
+    }
+    DataType type = 1;
+  }
+
+  // Request info about the entire cluster.
+  message ClusterInfoRequest {
+    enum DataType {
+      DATA_TYPE_UNSPECIFIED = 0;
+      MAP = 1; // Get a list of all known nodes.
+      EPOCH = 2;     // Get the current cluster epoch.
+    }
+
+    DataType type = 1;
+  }
+
+  oneof about {
+    NodeInfoRequest node_info = 1;
+    BucketInfoRequest bucket_info = 2;
+    ClusterInfoRequest cluster_info = 3;
+  }
+}
+
+message ClusterCommand {
+    message ClusterNodeCommand {
+        enum Type {
+          DATA_TYPE_UNSPECIFIED = 0;
+          ADD_NODES = 1;
+          REMOVE_NODES = 2;
+        }
+
+        Type type = 1;
+        repeated NodeAddress nodes = 2;
+    }
+
+    oneof command {
+        ClusterNodeCommand cluster_node = 1;
+    }
+}
+
+// The request message. The 'oneof' is the single source of truth for the operation type.
+message RpcRequest {
+  string correlation_id = 1;
+
+  oneof command {
+    KeyCommandBatch get_command = 2;
+    PutCommandBatch put_command = 3;
+    KeyCommandBatch delete_command = 4;
+    NodeCommand node_command = 5;
+    ClusterCommand cluster_command = 6;
+    InfoCommand info_command = 7;
+  }
+
+  // Metadata is separate from the command payload with unique field numbers.
+  optional int64 node_version = 8;
+  optional int64 cluster_epoch = 9;
+}
+
+// The top-level response message.
+message RpcResponse {
+  RpcStatus status = 1;
+  string response = 2;
+  string correlation_id = 3;
+}

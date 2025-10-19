@@ -14,6 +14,7 @@ import com.memora.model.BucketInfo;
 import com.memora.model.BucketMap;
 import com.memora.model.CacheEntry;
 import com.memora.store.Bucket;
+import com.memora.utils.Router;
 import com.memora.utils.ULID;
 
 public class BucketManager {
@@ -22,18 +23,15 @@ public class BucketManager {
     private final Map<String, Bucket> buckets; // Contains buckets of current node
 
     private final String nodeId;
-    private final RoutingService routingService;
 
     @Inject
     public BucketManager(
         String nodeId,
-        int numberOfBuckets,
-        RoutingService routingService
+        int numberOfBuckets
     ) {
         this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
         this.buckets = new HashMap<>();
-        this.routingService = routingService;
         addNewBuckets(numberOfBuckets);
     }
 
@@ -59,7 +57,7 @@ public class BucketManager {
     }
 
     private BucketInfo getBucketIdByKey(String key) {
-        int index = routingService.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
+        int index = Router.getBucketIndex(key, bucketMap.getNumberOfActiveBuckets());
         return getBucketInfo(index);
     }
 

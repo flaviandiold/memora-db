@@ -9,10 +9,9 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.MemoraDB;
 import com.memora.constants.Constants;
-import com.memora.core.MemoraChannel;
+import com.memora.core.MemoraServerChannel;
 import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
-import com.memora.core.Version;
 import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
 import com.memora.services.BucketManager;
@@ -49,10 +48,10 @@ public class MemoraModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public MemoraChannel provideMemoraChannel(
+    public MemoraServerChannel provideMemoraChannel(
         final CommandExecutor executor
     ){
-        return new MemoraChannel(executor);
+        return new MemoraServerChannel(executor);
     }
 
     @Provides
@@ -60,7 +59,7 @@ public class MemoraModule extends AbstractModule {
     public MemoraServer provideMemoraServer(
             @Named(Constants.NODE_HOST) String host,
             @Named(Constants.NODE_PORT) int port,
-            final MemoraChannel channel,
+            final MemoraServerChannel channel,
             final ThreadPoolService threadPoolService
     ) {
         return new MemoraServer(host, port, channel, threadPoolService);

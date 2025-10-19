@@ -1,36 +1,34 @@
 package com.memora.core;
 
 import com.memora.enums.NodeType;
-import com.memora.enums.RpcRespnseStatus;
-import com.memora.exceptions.RpcException;
-import com.memora.utils.Parser;
+import com.memora.exceptions.MemoraException;
+import com.memora.messages.RpcRequest;
+import com.memora.messages.RpcResponse;
+import com.memora.messages.RpcStatus;
+import com.memora.utils.RequestFactory;
+import com.memora.utils.ResponseFactory;
 
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import com.memora.model.CacheEntry;
+import com.memora.model.ClusterInfo;
 import com.memora.model.NodeInfo;
-import com.memora.model.RpcRequest;
-import com.memora.model.RpcResponse;
-import com.memora.services.CommandExecutor;
+import com.memora.services.ClientManager;
 
 /**
  * Simple blocking TCP client for cache RPC calls. Keeps a persistent connection
@@ -39,120 +37,86 @@ import com.memora.services.CommandExecutor;
 @Slf4j
 public class MemoraClient implements Closeable {
 
-    private final String host;
-    private final int port;
-    private final int CONNECT_TIMEOUT_MS = 2000;
+    private final Channel channel;
+    
     private final ReentrantLock lock = new ReentrantLock();
     private final int PUT_BATCH_SIZE = 50;
     private final int MAX_RETRIES = 3;
-    private final int MAX_CONNECT_ATTEMPTS = 3;
-
-    private Socket socket;
-    private BufferedWriter out;
-    private BufferedReader in;
+    
     private boolean closed = false;
 
-    public MemoraClient(String host, int port) throws IOException {
-        this.host = host;
-        this.port = port;
-        connectWithRetry();
-    }
-
-    private void connect() throws IOException {
-        if (socket == null || !socket.isConnected() || socket.isClosed()) {
-            socket = new Socket();
-            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-            socket.setKeepAlive(true);
-
-            // Order is important: create output stream first and flush.
-            out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            out.flush(); // send header immediately
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    public MemoraClient(String host, int port, Channel channel) throws IOException {
+        this.channel = channel;
+        if (new InetSocketAddress(host, port).isUnresolved()) {
+            throw new IOException("Unable to resolve host: " + host);
         }
     }
 
-    private void connectWithRetry() throws IOException {
-        int attempts = 0;
-        while (attempts < MAX_CONNECT_ATTEMPTS) {
-            try {
-                connect();
-                return;
-            } catch (IOException e) {
-                attempts++;
-                log.warn("Connection attempt {}/{} to {}:{} failed: {}", attempts, MAX_CONNECT_ATTEMPTS, host, port, e.getMessage());
-                if (attempts >= MAX_CONNECT_ATTEMPTS) {
-                    throw e;
-                }
-            }
-        }
-    }
-
-    public synchronized RpcResponse send(String request) throws RpcException {
+    private CompletableFuture<RpcResponse> send(RpcRequest request) throws MemoraException {
         if (closed) {
-            throw new RpcException("Client is closed.");
+            throw new MemoraException("Client is closed.");
         }
-        try {
-            out.write(request);
-            out.newLine();
-            out.flush();
+        if (channel == null || !channel.isActive()) {
+            return CompletableFuture.failedFuture(new MemoraException("Client not connected."));
+        }
 
-            String responseObject = in.readLine();
-            return Parser.fromJson(responseObject, RpcResponse.class);
-        } catch (IOException e) {
-            // This indicates a connection or serialization error, which is critical.
-            log.error("CLIENT error during call to {}:{}. Error: {}", host, port, e.getMessage());
-            // We should probably close the connection and let the caller decide to retry.
-            closeQuietly();
-            throw new RpcException("Failed to complete RPC call", e);
+        // 1. Generate a unique ID and create the future
+        CompletableFuture<RpcResponse> future = new CompletableFuture<>();
+
+        // 2. Store the future so the response handler can find it
+        if (request.getCorrelationId() == null || request.getCorrelationId().isEmpty()) {
+            throw new MemoraException("Request must have a correlation ID.");
         }
+
+        ClientManager.addRequest(request.getCorrelationId(), future);
+        
+        // 3. Send the request
+        channel.writeAndFlush(request);
+
+        // 4. Return the future immediately
+        return future;
+
     }
 
-    public RpcResponse call(String command) throws RpcException {
-        int idx = command.indexOf(' ');
-        String operation = idx != -1 ? command.substring(0, idx) : command;
+    public CompletableFuture<RpcResponse> call(RpcRequest request) throws MemoraException {
+        return send(request);
+    }
 
-        try {
-            connectWithRetry();
-        } catch (IOException e) {
-            throw new RpcException("Unable to connect to server", e);
-        }
+
+    public CompletableFuture<RpcResponse> call(String command) throws MemoraException {
 
         NodeInfo info = MemoraNode.getInfo();
-        Long version = null;
-        if (Objects.nonNull(info) && info.getNodeType().equals(NodeType.PRIMARY) ) {
-            version = Version.get();
-        }
+        long clusterEpoch = ClusterInfo.getClusterEpoch();
 
-        RpcRequest request = RpcRequest.builder()
-                .operation(operation)
-                .version(version)
-                .command(command)
-                .build();
+        RpcRequest.Builder request = RequestFactory.createRequest(command).setClusterEpoch(clusterEpoch);
+        if (Objects.nonNull(info) && info.getType().equals(NodeType.PRIMARY) ) {
+            request.setNodeVersion(Version.get());
+        }
         
-        return send(Parser.toJson(request));
+        return call(request.build());
     }
 
-    public RpcResponse callWithoutError(String request) {
+    public CompletableFuture<RpcResponse> callWithoutError(String request) {
         try {
             return call(request);
-        } catch (RpcException e) {
-            return RpcResponse.ERROR(request);
+        } catch (MemoraException e) {
+            return  CompletableFuture.supplyAsync(() -> ResponseFactory.create(RpcStatus.ERROR));
         }
     }
 
-    public RpcResponse getNodeId() {
+    public CompletableFuture<RpcResponse> getNodeId() {
         return call("INFO NODE ID");
     }
 
-    public RpcResponse getNodeInfo() {
+    public CompletableFuture<RpcResponse> getNodeInfo() {
         return call("INFO NODE ALL");
     }
 
-    public RpcResponse primarize(String host, int port) {
+    public CompletableFuture<RpcResponse> primarize(String host, int port) {
         return call(String.format("NODE PRIMARIZE %s@%d", host, port));
     }
 
-    public RpcResponse replicate(String host, int port) {
+    public CompletableFuture<RpcResponse> replicate(String host, int port) {
         return call(String.format("NODE REPLICATE %s@%d", host, port));
     }
 
@@ -281,7 +245,7 @@ public class MemoraClient implements Closeable {
             }
             if (retriesLeft > 0) {
                 // If failed and we have retries left, try again.
-                System.out.println("Request failed, retrying... (" + retriesLeft + " retries left)");
+                log.info("Request failed, retrying... (" + retriesLeft + " retries left)");
                 return attemptWithRetries(request, retriesLeft - 1, pool);
             }
             // If failed and no retries are left, return final failure.
@@ -289,7 +253,7 @@ public class MemoraClient implements Closeable {
         }, pool);
     }
 
-    public RpcResponse get(String key) {
+    public CompletableFuture<RpcResponse> get(String key) {
         return call(String.format("GET %s", key));
     }
 
@@ -298,26 +262,15 @@ public class MemoraClient implements Closeable {
         return isSuccess(request);
     }
 
-    public String getHost() {
-        try {
-            connectWithRetry();
-            return socket.getInetAddress().getHostAddress();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public int getPort() {
-        try {
-            connectWithRetry();
-            return socket.getPort();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private boolean isSuccess(String request) {
-        return RpcRespnseStatus.OK.equals(callWithoutError(request).getStatus());
+        RpcResponse response;
+        try {
+            response = callWithoutError(request).get();
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("RPC call failed for request '{}': {}", request, e.getMessage());
+            return false;
+        }
+        return RpcStatus.OK.equals(response.getStatus());
     }
 
     @Override
@@ -335,27 +288,8 @@ public class MemoraClient implements Closeable {
     }
 
     private void closeQuietly() {
-        try {
-            if (in != null) {
-                in.close();
-            }
-        } catch (IOException e) {
-            /* ignore */ }
-        try {
-            if (out != null) {
-                out.close();
-            }
-        } catch (IOException e) {
-            /* ignore */ }
-        try {
-            if (socket != null) {
-                socket.close();
-            }
-        } catch (IOException e) {
-            /* ignore */ } finally {
-            in = null;
-            out = null;
-            socket = null;
+        if (channel != null) {
+            channel.close();
         }
     }
 }

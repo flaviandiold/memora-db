@@ -6,62 +6,49 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
 import com.memora.enums.ThreadPool;
+import com.memora.executors.DelExecutor;
+import com.memora.executors.GetExecutor;
+import com.memora.executors.InfoExecutor;
+import com.memora.executors.NodeExecutor;
+import com.memora.executors.PutExecutor;
+import com.memora.executors.UnknownExecutor;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
-import com.memora.operations.DelOperation;
-import com.memora.operations.GetOperation;
-import com.memora.operations.InfoOperation;
-import com.memora.operations.PutOperation;
-import com.memora.operations.NodeOperation;
-import com.memora.operations.UnknownOperation;
 import com.memora.services.BucketManager;
+import com.memora.services.ClientManager;
 import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
 import com.memora.services.ReplicationManager;
-import com.memora.services.RoutingService;
 import com.memora.services.ThreadPoolService;
 
 public class ServiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public ThreadPoolService provideThreadPoolService() {
-        ThreadPoolService threadPoolService = new ThreadPoolService();
-        for (ThreadPool pool : ThreadPool.getAllThreadPool()) {
-            if (!pool.isCluster()) {
-                threadPoolService.createThreadPool(pool);
-            }
-        }
-        return threadPoolService;
-    }
-
-    @Provides
-    @Singleton
     public BucketManager provideBucketManager(
             @Named(Constants.NODE_ID) String nodeId,
-            @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets,
-            RoutingService routingService
+            @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets
     ) {
-        return new BucketManager(nodeId, numberOfBuckets, routingService);
+        return new BucketManager(nodeId, numberOfBuckets);
     }
 
     @Provides
     @Singleton
     public CommandExecutor provideCommandExecutor(
-            final PutOperation putCommand,
-            final GetOperation getCommand,
-            final DelOperation delCommand,
-            final UnknownOperation unknownCommand,
-            final InfoOperation infoCommand,
-            final NodeOperation replicateCommand
+            final PutExecutor putExecutor,
+            final GetExecutor getExecutor,
+            final DelExecutor delExecutor,
+            final UnknownExecutor unknownExecutor,
+            final InfoExecutor infoExecutor,
+            final NodeExecutor nodeExecutor
     ) {
         return new CommandExecutor(
-                putCommand,
-                getCommand,
-                delCommand,
-                replicateCommand,
-                infoCommand,
-                unknownCommand
+                putExecutor,
+                getExecutor,
+                delExecutor,
+                nodeExecutor,
+                infoExecutor,
+                unknownExecutor
         );
     }
 
@@ -73,21 +60,15 @@ public class ServiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public ReplicationManager provideReplicationManager(NodeInfo nodeInfo, BucketManager bucketManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        return new ReplicationManager(nodeInfo, bucketManager, routingService, threadPoolService, clusterMap);
+    public ReplicationManager provideReplicationManager(NodeInfo nodeInfo, BucketManager bucketManager, ClientManager clientManager, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+        return new ReplicationManager(nodeInfo, bucketManager, clientManager, threadPoolService, clusterMap);
     }
 
 
     @Provides
     @Singleton
-    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo, ReplicationManager replicationManager, RoutingService routingService, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        return new ClusterOrchestrator(nodeInfo, replicationManager, routingService, threadPoolService, clusterMap);
-    }
-
-    @Provides
-    @Singleton
-    public RoutingService provideRoutingService() {
-        return new RoutingService();
+    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo, ReplicationManager replicationManager, ClientManager clientManager, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
+        return new ClusterOrchestrator(nodeInfo, replicationManager, clientManager, threadPoolService, clusterMap);
     }
 
 }

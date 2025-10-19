@@ -17,14 +17,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ClusterMap {
 
-    private long epoch;
     private final Map<String, NodeInfo> allNodes;
     private final PriorityBlockingQueue<String> primaries;
     private final Map<String, PriorityBlockingQueue<String>> primaryToReplicasMap;
     private final Map<String, String> replicaToPrimaryMap;
 
     public ClusterMap(long epoch) {
-        this.epoch = epoch;
+        ClusterInfo.setClusterEpoch(epoch);
         this.allNodes = new HashMap<>();
         this.primaries = new PriorityBlockingQueue<>(60, getComparator());
         this.primaryToReplicasMap = new HashMap<>();
@@ -85,7 +84,7 @@ public class ClusterMap {
     }
 
     public void incrementEpoch() {
-        epoch++;
+        ClusterInfo.incrementEpoch();
     }
 
     private void addNode(NodeInfo node) {
@@ -101,14 +100,14 @@ public class ClusterMap {
         return (a, b) -> allNodes.get(a).getNodeId().compareTo(allNodes.get(b).getNodeId());
     }
 
-    public void merge(ClusterMap other) {
+    public void merge(ClusterMap other, long clusterEpoch) {
         if (other == null) {
             return;
         }
 
         // If other map is newer → adopt completely
-        if (other.getEpoch() > this.epoch) {
-            this.epoch = other.getEpoch();
+        if (clusterEpoch > ClusterInfo.getClusterEpoch()) {
+            ClusterInfo.setClusterEpoch(clusterEpoch);
 
             // Deep copy
             this.allNodes.clear();
@@ -129,7 +128,7 @@ public class ClusterMap {
         }
 
         // If epochs are equal, merge conservatively
-        if (other.getEpoch() == this.epoch) {
+        if (clusterEpoch == ClusterInfo.getClusterEpoch()) {
             // Merge nodes
             other.getAllNodes().forEach((id, node) -> this.allNodes.putIfAbsent(id, node));
 
@@ -151,6 +150,4 @@ public class ClusterMap {
 
         // If other epoch is older, do nothing
     }
-
-
 }

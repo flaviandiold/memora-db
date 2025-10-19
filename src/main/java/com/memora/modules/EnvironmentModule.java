@@ -12,6 +12,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
+import com.memora.exceptions.MemoraException;
 import com.memora.model.NodeBase;
 import com.memora.utils.ULID;
 
@@ -37,7 +38,7 @@ public class EnvironmentModule extends AbstractModule {
             InetAddress localHost = InetAddress.getLocalHost();
             return localHost.getHostAddress();
         } catch (UnknownHostException e) {
-            throw new RuntimeException("Unable to get local host address", e);
+            throw new MemoraException("Unable to get local host address", e);
         }
     }
     
@@ -79,10 +80,17 @@ public class EnvironmentModule extends AbstractModule {
         String numberOfBuckets = getEnv(Constants.NUMBER_OF_BUCKETS);
         if (!Objects.isNull(numberOfBuckets)) return Integer.parseInt(numberOfBuckets);
         double freeMemory = Runtime.getRuntime().freeMemory();
-        int bucketsForMemory = (int) Math.ceil(freeMemory / (1024 * 1024 * 500));
-        if (bucketsForMemory <= 1) return 3;
+        int bucketsForMemory = (int) Math.ceil(freeMemory / (1024 * 1024 * Constants.DEFAULT_BUCKET_SIZE));
+        if (bucketsForMemory <= 1) return 2;
         if (bucketsForMemory > 10) return 10;
         return bucketsForMemory;
+    }
+
+    @Provides
+    @Named(Constants.REPLICATION_FACTOR)
+    @Singleton
+    public int getReplicationFactor() {
+        return Integer.parseInt(Constants.DEFAULT_REPLICATION_FACTOR);
     }
     
     private static String getOrDefault(String key, String value) {

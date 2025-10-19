@@ -1,7 +1,6 @@
 package com.memora.core;
 
 import java.io.IOException;
-import java.util.Optional;
 
 import com.google.inject.Inject;
 import com.memora.enums.ThreadPool;
@@ -10,6 +9,7 @@ import com.memora.services.ThreadPoolService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -23,7 +23,7 @@ public class MemoraServer implements AutoCloseable {
 
     private final String host;
     private final int port;
-    private final MemoraChannel memoraChannel;
+    private final ChannelInitializer<Channel> memoraChannel;
     private final ThreadPoolService threadPoolService;
 
     private Channel serverChannel;
@@ -34,7 +34,7 @@ public class MemoraServer implements AutoCloseable {
         ThreadPool serverPool = ThreadPool.SERVER_THREAD_POOL;
         bossGroup = new NioEventLoopGroup(); // accepts incoming connections
         workerGroup = new NioEventLoopGroup(serverPool.getSize(),
-            threadPoolService.getThreadPool(ThreadPool.SERVER_THREAD_POOL)); // handles traffic
+            threadPoolService.getThreadPool(serverPool)); // handles traffic
         try {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
