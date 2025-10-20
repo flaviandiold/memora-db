@@ -86,7 +86,7 @@ public class MemoraClient implements Closeable {
     public CompletableFuture<RpcResponse> call(String command) throws MemoraException {
 
         NodeInfo info = MemoraNode.getInfo();
-        long clusterEpoch = ClusterInfo.getClusterEpoch();
+        long clusterEpoch = ClusterInfo.getEpoch();
 
         RpcRequest.Builder request = RequestFactory.createRequest(command).setClusterEpoch(clusterEpoch);
         if (Objects.nonNull(info) && info.getType().equals(NodeType.PRIMARY) ) {

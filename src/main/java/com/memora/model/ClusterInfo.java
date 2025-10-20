@@ -3,32 +3,32 @@ package com.memora.model;
 import com.memora.enums.ClusterState;
 
 public class ClusterInfo {
-    private static long clusterEpoch;
-    private static ClusterState clusterState;
+    private static long epoch;
+    private static ClusterState state;
 
     static {
-        clusterEpoch = -1L;
-        clusterState = ClusterState.ACTIVE;
+        epoch = -1L;
+        state = ClusterState.ACTIVE;
     }
 
-    public static long getClusterEpoch() {
-        return clusterEpoch;
+    public static long getEpoch() {
+        return epoch;
     }
 
-    public static ClusterState getClusterState() {
-        return clusterState;
+    public static ClusterState getState() {
+        return state;
     }
 
-    public static void setClusterEpoch(long epoch) {
-        clusterEpoch = epoch;
+    public static void setEpoch(long newEpoch) {
+        epoch = newEpoch;
     }
 
     public static void incrementEpoch() {
-        clusterEpoch++;
+        epoch++;
     }
 
-    public static void setClusterState(ClusterState state) {
-        clusterState = state;
+    public static void setState(ClusterState newState) {
+        state = newState;
     }
 
 }

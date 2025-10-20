@@ -4,6 +4,7 @@ import java.util.Map;
 
 import com.google.inject.Inject;
 import com.memora.enums.Operations;
+import com.memora.executors.ClusterExecutor;
 import com.memora.executors.DelExecutor;
 import com.memora.executors.Executor;
 import com.memora.executors.GetExecutor;
@@ -30,6 +31,7 @@ public class CommandExecutor {
             final DelExecutor delExecutor,
             final NodeExecutor nodeExecutor,
             final InfoExecutor infoExecutor,
+            final ClusterExecutor clusterExecutor,
             final UnknownExecutor unknownExecutor
     ) {
         commands = Map.of(
@@ -38,6 +40,7 @@ public class CommandExecutor {
                 Operations.DELETE, delExecutor,
                 Operations.NODE, nodeExecutor,
                 Operations.INFO, infoExecutor,
+                Operations.CLUSTER, clusterExecutor,
                 Operations.UNKNOWN, unknownExecutor
         );
 

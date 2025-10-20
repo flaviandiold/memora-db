@@ -118,7 +118,7 @@ message ClusterCommand {
     }
 
     oneof command {
-        ClusterNodeCommand cluster_node = 1;
+        ClusterNodeCommand node_command = 1;
     }
 }
 

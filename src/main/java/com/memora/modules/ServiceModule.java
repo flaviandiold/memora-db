@@ -6,6 +6,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
 import com.memora.enums.ThreadPool;
+import com.memora.executors.ClusterExecutor;
 import com.memora.executors.DelExecutor;
 import com.memora.executors.GetExecutor;
 import com.memora.executors.InfoExecutor;
@@ -38,6 +39,7 @@ public class ServiceModule extends AbstractModule {
             final PutExecutor putExecutor,
             final GetExecutor getExecutor,
             final DelExecutor delExecutor,
+            final ClusterExecutor clusterExecutor,
             final UnknownExecutor unknownExecutor,
             final InfoExecutor infoExecutor,
             final NodeExecutor nodeExecutor
@@ -48,6 +50,7 @@ public class ServiceModule extends AbstractModule {
                 delExecutor,
                 nodeExecutor,
                 infoExecutor,
+                clusterExecutor,
                 unknownExecutor
         );
     }

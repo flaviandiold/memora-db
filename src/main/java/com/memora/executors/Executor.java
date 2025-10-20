@@ -60,7 +60,8 @@ public abstract class Executor {
             case DELETE_COMMAND -> Operations.DELETE;
             case NODE_COMMAND -> Operations.NODE;
             case INFO_COMMAND -> Operations.INFO;
-            case CLUSTER_COMMAND, COMMAND_NOT_SET -> Operations.UNKNOWN;
+            case CLUSTER_COMMAND -> Operations.CLUSTER;
+            case COMMAND_NOT_SET -> Operations.UNKNOWN;
         };
     }
 }

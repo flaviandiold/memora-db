@@ -23,7 +23,7 @@ public class ClusterMap {
     private final Map<String, String> replicaToPrimaryMap;
 
     public ClusterMap(long epoch) {
-        ClusterInfo.setClusterEpoch(epoch);
+        ClusterInfo.setEpoch(epoch);
         this.allNodes = new HashMap<>();
         this.primaries = new PriorityBlockingQueue<>(60, getComparator());
         this.primaryToReplicasMap = new HashMap<>();
@@ -106,8 +106,8 @@ public class ClusterMap {
         }
 
         // If other map is newer → adopt completely
-        if (clusterEpoch > ClusterInfo.getClusterEpoch()) {
-            ClusterInfo.setClusterEpoch(clusterEpoch);
+        if (clusterEpoch > ClusterInfo.getEpoch()) {
+            ClusterInfo.setEpoch(clusterEpoch);
 
             // Deep copy
             this.allNodes.clear();
@@ -128,7 +128,7 @@ public class ClusterMap {
         }
 
         // If epochs are equal, merge conservatively
-        if (clusterEpoch == ClusterInfo.getClusterEpoch()) {
+        if (clusterEpoch == ClusterInfo.getEpoch()) {
             // Merge nodes
             other.getAllNodes().forEach((id, node) -> this.allNodes.putIfAbsent(id, node));
 

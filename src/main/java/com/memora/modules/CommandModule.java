@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.memora.core.MemoraNode;
+import com.memora.executors.ClusterExecutor;
 import com.memora.executors.DelExecutor;
 import com.memora.executors.GetExecutor;
 import com.memora.executors.InfoExecutor;
@@ -53,6 +54,11 @@ public class CommandModule extends AbstractModule {
         return new InfoExecutor(node);
     }
 
+    @Provides
+    @Singleton
+    public ClusterExecutor provideClusterExecutor() {
+        return new ClusterExecutor();
+    }
 
     @Provides
     @Singleton

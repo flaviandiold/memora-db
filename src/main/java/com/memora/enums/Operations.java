@@ -5,6 +5,7 @@ public enum Operations {
     GET("GET"),
     DELETE("DELETE"),
     NODE("NODE"),
+    CLUSTER("CLUSTER"),
     INFO("INFO"),
     UNKNOWN("UNKNOWN");
 
