@@ -140,8 +140,7 @@ public class ReplicationManager {
             }.getType());
             bucketManager.createFromPrimary(bucketInfo);
             client.primarize(currentNode.getHost(), currentNode.getPort());
-
-        });
+        }).join();
     }
 
     public void clearInSyncReplicas() {

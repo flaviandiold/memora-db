@@ -35,7 +35,7 @@ public class PutExecutor extends Executor {
     public RpcResponse execute(RpcRequest request) {
 
         NodeInfo currentNode = MemoraNode.getInfo();
-        if (currentNode.isReplica() && Objects.isNull(request.getNodeVersion())) {
+        if (currentNode.isReplica() && request.getNodeVersion() == -1L) {
             return node.forwardToPrimary(request).setCorrelationId(request.getCorrelationId()).build();
         }
 

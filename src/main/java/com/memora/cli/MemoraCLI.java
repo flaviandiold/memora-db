@@ -1,6 +1,7 @@
 package com.memora.cli;
 
 import java.io.IOException;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,18 +75,27 @@ public class MemoraCLI {
 
         try (Scanner scanner = new Scanner(System.in);) {
             while (true) {
-                System.out.print("> ");
-                String input = scanner.nextLine().trim();
-                if ("exit".equalsIgnoreCase(input)) {
+                try {
+                    System.out.print("> ");
+                    String input = scanner.nextLine().trim();
+                    if ("exit".equalsIgnoreCase(input)) {
+                        break;
+                    }
+                    RpcResponse result = client.call(input).get();
+                    System.out.println(result);
+                
+                } catch (NoSuchElementException e) {
+                    // Catch the specific exception for Ctrl+D
+                    // Treat Ctrl+D as a clean exit
                     break;
+                } catch (Exception e) {
+                    // Catch all other exceptions and continue
+                    System.err.println("Error: " + e.getMessage());
                 }
-                RpcResponse result = client.call(input).get();
-                System.out.println(result);
             }
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
         }
         System.out.println("Exiting Memora CLI. Goodbye!");
+        System.exit(0);
     }
 
     private void runConcurrencyTest(String host, int port) {

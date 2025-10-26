@@ -88,7 +88,11 @@ public class MemoraClient implements Closeable {
         NodeInfo info = MemoraNode.getInfo();
         long clusterEpoch = ClusterInfo.getEpoch();
 
-        RpcRequest.Builder request = RequestFactory.createRequest(command).setClusterEpoch(clusterEpoch);
+        RpcRequest.Builder request = RequestFactory
+            .createRequest(command)
+            .setNodeVersion(-1)
+            .setClusterEpoch(clusterEpoch);
+
         if (Objects.nonNull(info) && info.getType().equals(NodeType.PRIMARY) ) {
             request.setNodeVersion(Version.get());
         }
