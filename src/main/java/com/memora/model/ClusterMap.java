@@ -1,11 +1,15 @@
 package com.memora.model;
 
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicLong;
+
+import com.memora.core.MemoraNode;
+import com.memora.exceptions.MemoraException;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -18,16 +22,17 @@ import lombok.extern.slf4j.Slf4j;
 public class ClusterMap {
 
     private final Map<String, NodeInfo> allNodes;
-    private final PriorityBlockingQueue<String> primaries;
-    private final Map<String, PriorityBlockingQueue<String>> primaryToReplicasMap;
+    private final ConcurrentSkipListSet<String> primaries;
+    private final Map<String, ConcurrentSkipListSet<String>> primaryToReplicasMap;
     private final Map<String, String> replicaToPrimaryMap;
+    private AtomicLong epoch;
 
     public ClusterMap(long epoch) {
-        ClusterInfo.setEpoch(epoch);
-        this.allNodes = new HashMap<>();
-        this.primaries = new PriorityBlockingQueue<>(60, getComparator());
-        this.primaryToReplicasMap = new HashMap<>();
-        this.replicaToPrimaryMap = new HashMap<>();
+        this.epoch = new AtomicLong(epoch);
+        this.allNodes = new ConcurrentHashMap<>();
+        this.primaries = new ConcurrentSkipListSet<>(getComparator());
+        this.primaryToReplicasMap = new ConcurrentHashMap<>();
+        this.replicaToPrimaryMap = new ConcurrentHashMap<>();
     }
 
     public void addPrimary(NodeInfo primary) {
@@ -46,17 +51,32 @@ public class ClusterMap {
         replicaToPrimaryMap.remove(primaryId);
     }
 
+    public long getEpoch() {
+        return epoch.get();
+    }
+
+    public void setEpoch(long newEpoch) {
+        epoch.set(newEpoch);
+    }
+
     public void addReplica(String primaryId, NodeInfo replica) {
         addNode(replica);
-        String replicaId = replica.getNodeId();
-        replicaToPrimaryMap.compute(replicaId, (k, v) -> {
-            if (!Objects.isNull(v)) primaryToReplicasMap.get(v).remove(k);
+        replicaToPrimaryMap.compute(replica.getNodeId(), (replicaId, prevPrimaryId) -> {
+            if (!Objects.isNull(prevPrimaryId))
+                primaryToReplicasMap.get(prevPrimaryId).remove(replicaId);
             
             primaryToReplicasMap
-                .computeIfAbsent(primaryId, id -> new PriorityBlockingQueue<>(60, getComparator()))
-                .add(k);
+                .computeIfAbsent(primaryId, id -> new ConcurrentSkipListSet<>(getComparator()))
+                .add(replicaId);
             return primaryId;
         });
+    }
+
+    public void removeReplica(String replicaId) {
+        String primaryId = replicaToPrimaryMap.get(replicaId);
+        primaryToReplicasMap.get(primaryId).remove(replicaId);
+        replicaToPrimaryMap.remove(replicaId);
+        removeNode(replicaId);
     }
 
     public boolean isPrimaryOf(String replicaId, String primaryId) {
@@ -66,88 +86,94 @@ public class ClusterMap {
 
     public NodeInfo getMyPrimary(String replicaId) {
         String primaryId = replicaToPrimaryMap.get(replicaId);
-        return allNodes.get(primaryId);
+        return getNode(primaryId);
+    }
+
+    public NodeInfo getNode(String nodeId) {
+        return allNodes.get(nodeId);
     }
 
     public List<String> getReplicaIds(String primaryId) {
-        return List.copyOf(primaryToReplicasMap.get(primaryId));
+        ConcurrentSkipListSet<String> replicas = primaryToReplicasMap.get(primaryId);
+        if (replicas == null) return List.of();
+        return List.copyOf(replicas);
     }
 
     public List<NodeInfo> getReplicas(String primaryId) {
-        PriorityBlockingQueue<String> replicas = primaryToReplicasMap.get(primaryId);
-        if (replicas == null) return List.of();
-        return replicas.stream().map(allNodes::get).toList();
+        return getReplicaIds(primaryId).stream().map(allNodes::get).toList();
     }
 
     public boolean containsNode(String nodeId) {
         return allNodes.containsKey(nodeId);
     }
 
+    public String getClusterLeader() {
+        return primaries.first();
+    }
+
     public void incrementEpoch() {
-        ClusterInfo.incrementEpoch();
+        if (MemoraNode.getInfo().isPrimary()) epoch.incrementAndGet();
     }
 
     private void addNode(NodeInfo node) {
         Objects.requireNonNull(node, "node cannot be null");
         allNodes.put(node.getNodeId(), node);
+        incrementEpoch();
     }
 
     private void removeNode(String nodeId) {
         allNodes.remove(nodeId);
+        incrementEpoch();
     }
 
     private Comparator<String> getComparator() {
-        return (a, b) -> allNodes.get(a).getNodeId().compareTo(allNodes.get(b).getNodeId());
+        return (a, b) -> a.compareTo(b);
     }
 
-    public void merge(ClusterMap other, long clusterEpoch) {
+    public synchronized void merge(ClusterMap other) {
         if (other == null) {
             return;
         }
 
-        // If other map is newer → adopt completely
-        if (clusterEpoch > ClusterInfo.getEpoch()) {
-            ClusterInfo.setEpoch(clusterEpoch);
+        // Merge nodes
+        other.getAllNodes().forEach((id, node) -> this.allNodes.putIfAbsent(id, node));
+        
+        // Merge primaries
+        this.primaries.addAll(other.getPrimaries());
+        
+        // Merge replica mappings
+        other.getPrimaryToReplicasMap().forEach((primary, replicas) -> {
+            this.primaryToReplicasMap
+                .computeIfAbsent(primary, id -> new ConcurrentSkipListSet<>(getComparator()))
+                .addAll(replicas);
+        });
+        
+        // Merge reverse mapping
+        other.getReplicaToPrimaryMap().forEach((replica, primary) -> {
+            this.replicaToPrimaryMap.putIfAbsent(replica, primary);
+        });
 
-            // Deep copy
-            this.allNodes.clear();
-            this.allNodes.putAll(other.getAllNodes());
+        long epoch = other.getEpoch();
+        if (epoch > this.getEpoch()) this.setEpoch(epoch);
 
-            this.primaries.clear();
-            this.primaries.addAll(other.getPrimaries());
+    }
 
-            this.primaryToReplicasMap.clear();
-            other.getPrimaryToReplicasMap().forEach((k, v) ->
-                this.primaryToReplicasMap.put(k, new PriorityBlockingQueue<>(v))
-            );
+    public List<String> sort(List<String> nodeIds) {
+        return nodeIds.stream().sorted(getComparator()).toList();
+    }
 
-            this.replicaToPrimaryMap.clear();
-            this.replicaToPrimaryMap.putAll(other.getReplicaToPrimaryMap());
-
-            return;
+    public void validateNewPrimary(String newPrimary) {
+        String lastPrimary = primaries.last();
+        if (getComparator().compare(newPrimary, lastPrimary) < 0) {
+            throw new MemoraException("New Primary ID cannot be smaller than the last Primary ID");
         }
-
-        // If epochs are equal, merge conservatively
-        if (clusterEpoch == ClusterInfo.getEpoch()) {
-            // Merge nodes
-            other.getAllNodes().forEach((id, node) -> this.allNodes.putIfAbsent(id, node));
-
-            // Merge primaries
-            this.primaries.addAll(other.getPrimaries());
-
-            // Merge replica mappings
-            other.getPrimaryToReplicasMap().forEach((primary, replicas) -> {
-                this.primaryToReplicasMap
-                    .computeIfAbsent(primary, id -> new PriorityBlockingQueue<>(60, getComparator()))
-                    .addAll(replicas);
-            });
-
-            // Merge reverse mapping
-            other.getReplicaToPrimaryMap().forEach((replica, primary) -> {
-                this.replicaToPrimaryMap.putIfAbsent(replica, primary);
-            });
-        }
-
-        // If other epoch is older, do nothing
+    }
+    
+    public void clear() {
+        this.setEpoch(0);
+        allNodes.clear();
+        primaries.clear();
+        primaryToReplicasMap.clear();
+        replicaToPrimaryMap.clear();
     }
 }

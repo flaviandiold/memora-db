@@ -3,6 +3,7 @@ package com.memora.services;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -11,8 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
 import com.memora.core.MemoraClientChannel;
+import com.memora.core.MemoraNode;
 import com.memora.enums.ThreadPool;
 import com.memora.messages.RpcResponse;
+import com.memora.model.ClusterMap;
 import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
 
@@ -29,12 +32,13 @@ public class ClientManager {
     private final Bootstrap bootstrap;
     private final EventLoopGroup group;
     private final Map<String, MemoraClient> clientMap;
+    private final ClusterMap clusterMap;
 
     private static final Map<String, CompletableFuture<RpcResponse>> PENDING_REQUESTS = new ConcurrentHashMap<>();
 
 
     @Inject
-    public ClientManager(ThreadPoolService threadPoolService) {
+    public ClientManager(ThreadPoolService threadPoolService, ClusterMap clusterMap) {
         ThreadPool clientPool = ThreadPool.CLIENT_THREAD_POOL;
         this.group = new NioEventLoopGroup(clientPool.getSize(),
             threadPoolService.getThreadPool(clientPool));
@@ -42,29 +46,57 @@ public class ClientManager {
         this.bootstrap.group(group)
                       .channel(NioSocketChannel.class)
                       .handler(new MemoraClientChannel());
-        clientMap = new HashMap<>();
+        clientMap = new ConcurrentHashMap<>();
+        this.clusterMap = clusterMap;
     }
 
 
-    public void addClient(String nodeId, MemoraClient client) {
-        if (clientMap.containsKey(nodeId)) {
-            return;
-        }
+    public synchronized void addClient(String nodeId, MemoraClient client) {
         clientMap.put(nodeId, client);
     }
 
     public MemoraClient getOrCreate(NodeInfo node) throws InterruptedException, IOException {
-        MemoraClient client = getClient(node.getNodeId());
-        if (client == null) {
-            client = create(node.getNodeBase());
-            addClient(node.getNodeId(), client);
+        return getOrCreate(node.getNodeId(), node.getNodeBase());
+    }
+
+    public MemoraClient getOrCreate(String nodeId, NodeBase base) throws InterruptedException, IOException {
+        MemoraClient client = getClient(nodeId);
+        if (client == null || !client.isActive()) {
+            String remoteNodeId = createAndAdd(base);
+            if (remoteNodeId != nodeId) throw new RuntimeException("Node ID mismatch");
+            client = getClient(nodeId);
         }
         return client;
     }
 
-    public synchronized MemoraClient create(NodeBase base) throws IOException, InterruptedException {
-        Channel channel = this.bootstrap.connect(base.getHost(), base.getPort()).sync().channel();
-        return new MemoraClient(base.getHost(), base.getPort(), channel);
+    public String createAndAdd(NodeBase base) {
+        return createAndAdd(base, Optional.empty());
+    }
+
+    public String createAndAdd(NodeBase base, Optional<String> nodeId) {
+        try {
+            // We must create a temporary client just to ask its ID.
+            if (new InetSocketAddress(base.getHost(), base.getPort()).isUnresolved()) {
+                throw new IOException("Unable to resolve host: " + base.getHost());
+            }
+
+            Channel channel = this.bootstrap.connect(base.getHost(), base.getPort()).sync().channel();
+            MemoraClient tempClient = new MemoraClient(channel, base, clusterMap);
+            
+            String id = nodeId.orElse(tempClient.getNodeId().get().getResponse());
+            
+            // Now, register it properly (this is synchronized)
+            addClient(id, tempClient);
+            return id;
+            
+        } catch (Exception exception) {
+            log.error("Unable to create client for {}", base, exception);
+            throw new RuntimeException(String.format("Unable to create client for %s", base));
+        }
+    }
+
+    public List<String> createAndAddAll(List<NodeBase> base) {
+       return base.stream().map(this::createAndAdd).toList();
     }
 
     public NodeBase getAddress(String hostName, int port) throws IOException {
@@ -76,6 +108,14 @@ public class ClientManager {
     }
 
     public MemoraClient getClient(String nodeId) {
+        MemoraClient client = clientMap.get(nodeId);
+        if (client == null) {
+            throw new RuntimeException("Client not found for node " + nodeId);
+        }
+
+        if (!client.isActive()) {
+            createAndAdd(client.getBase(), Optional.of(nodeId));
+        }
         return clientMap.get(nodeId);
     }
 
@@ -86,6 +126,7 @@ public class ClientManager {
     public static void resolve(String correlationId, RpcResponse response) {
         CompletableFuture<RpcResponse> future = PENDING_REQUESTS.remove(correlationId);
 
+        log.info("Resolving request {}", correlationId);
         Optional.ofNullable(future).ifPresent(f -> f.complete(response));
     }
 }

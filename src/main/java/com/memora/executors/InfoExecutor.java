@@ -8,6 +8,7 @@ import com.memora.messages.RpcResponse;
 import com.memora.messages.InfoCommand.BucketInfoRequest;
 import com.memora.messages.InfoCommand.ClusterInfoRequest;
 import com.memora.messages.InfoCommand.NodeInfoRequest;
+import com.memora.model.BucketInfo;
 import com.memora.utils.Parser;
 
 public class InfoExecutor extends Executor {
@@ -28,6 +29,16 @@ public class InfoExecutor extends Executor {
 
                 yield switch (nodeInfoRequest.getType()) {
                     case ID -> OK(request, MemoraNode.getInfo().getNodeId());
+                    case TYPE -> OK(request, MemoraNode.getInfo().getType().toString());
+                    case KEYS -> OK(request, Parser.toJson(node.getSelfKeys()));
+                    case REPLICAS -> {
+                        if (!MemoraNode.getInfo().isPrimary()) UNSUPPORTED_OPERATION(request, "NOT A PRIMARY");
+                        yield OK(request, Parser.toJson(node.getClusterMap().getReplicas(MemoraNode.getInfo().getNodeId())));
+                    }
+                    case PRIMARIES -> {
+                        if (!MemoraNode.getInfo().isPrimary()) UNSUPPORTED_OPERATION(request, "NOT A PRIMARY");
+                        yield OK(request, String.valueOf(node.getClusterMap().getPrimaries().size()));
+                    }
                     case ALL -> OK(request, Parser.toJson(MemoraNode.getInfo()));
                     case MAX_QPS -> OK(request, String.valueOf(MemoraNode.getInfo().getMaxQps()));
                     case CURRENT_QPS -> OK(request, String.valueOf(MemoraNode.getInfo().getCurrentQps()));
@@ -40,6 +51,7 @@ public class InfoExecutor extends Executor {
 
                 yield switch (bucketInfoRequest.getType()) {
                     case MAP -> OK(request, Parser.toJson(node.getAllBuckets()));
+                    case IDS -> OK(request, Parser.toJson(node.getSelfBuckets()));
                     default -> UNSUPPORTED_OPERATION(request, "Invalid sub-command for InfoCommand " + bucketInfoRequest.getType());
                 };
             }

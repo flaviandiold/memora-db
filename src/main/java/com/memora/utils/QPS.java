@@ -24,7 +24,7 @@ public final class QPS {
     
     public void initialize() {
         INSTANCE = this;
-        threadPoolService.submitEvery(ThreadPool.GENERAL_THREAD_POOL, QPS.INSTANCE::rotate, 1);
+        threadPoolService.submitEvery(ThreadPool.LOWER_THREAD_POOL, QPS.INSTANCE::rotate, 1);
     }
 
     public static QPS getInstance() {

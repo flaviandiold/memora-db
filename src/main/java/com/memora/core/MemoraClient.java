@@ -5,10 +5,10 @@ import com.memora.exceptions.MemoraException;
 import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.messages.RpcStatus;
+import com.memora.utils.Parser;
 import com.memora.utils.RequestFactory;
 import com.memora.utils.ResponseFactory;
 
-import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -26,7 +27,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import com.memora.model.CacheEntry;
-import com.memora.model.ClusterInfo;
+import com.memora.model.ClusterMap;
+import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
 import com.memora.services.ClientManager;
 
@@ -38,6 +40,8 @@ import com.memora.services.ClientManager;
 public class MemoraClient implements Closeable {
 
     private final Channel channel;
+    private final NodeBase base;
+    private final ClusterMap clusterMap;
     
     private final ReentrantLock lock = new ReentrantLock();
     private final int PUT_BATCH_SIZE = 50;
@@ -45,10 +49,12 @@ public class MemoraClient implements Closeable {
     
     private boolean closed = false;
 
-    public MemoraClient(String host, int port, Channel channel) throws IOException {
+    public MemoraClient(Channel channel, NodeBase base, ClusterMap clusterMap) throws IOException {
         this.channel = channel;
-        if (new InetSocketAddress(host, port).isUnresolved()) {
-            throw new IOException("Unable to resolve host: " + host);
+        this.base = base;
+        this.clusterMap = clusterMap;
+        if (new InetSocketAddress(base.getHost(), base.getPort()).isUnresolved()) {
+            throw new IOException("Unable to resolve host: " + base.getHost());
         }
     }
 
@@ -56,7 +62,7 @@ public class MemoraClient implements Closeable {
         if (closed) {
             throw new MemoraException("Client is closed.");
         }
-        if (channel == null || !channel.isActive()) {
+        if (!this.isActive()) {
             return CompletableFuture.failedFuture(new MemoraException("Client not connected."));
         }
 
@@ -86,11 +92,11 @@ public class MemoraClient implements Closeable {
     public CompletableFuture<RpcResponse> call(String command) throws MemoraException {
 
         NodeInfo info = MemoraNode.getInfo();
-        long clusterEpoch = ClusterInfo.getEpoch();
+        long clusterEpoch = clusterMap.getEpoch();
 
         RpcRequest.Builder request = RequestFactory
             .createRequest(command)
-            .setNodeVersion(-1)
+            .setNodeVersion(-1L)
             .setClusterEpoch(clusterEpoch);
 
         if (Objects.nonNull(info) && info.getType().equals(NodeType.PRIMARY) ) {
@@ -98,6 +104,11 @@ public class MemoraClient implements Closeable {
         }
         
         return call(request.build());
+    }
+
+
+    public CompletableFuture<RpcResponse> call(String command, Object ...args) throws MemoraException {
+        return call(String.format(command, args));
     }
 
     public CompletableFuture<RpcResponse> callWithoutError(String request) {
@@ -112,20 +123,57 @@ public class MemoraClient implements Closeable {
         return call("INFO NODE ID");
     }
 
+
+    public CompletableFuture<RpcResponse> getNodeType() {
+        return call("INFO NODE TYPE");
+    }
+
+    public CompletableFuture<RpcResponse> getPrimariesCount() {
+        return call("INFO NODE PRIMARIES");
+    }
+    
+    public CompletableFuture<RpcResponse> getReplicas() {
+        return call("INFO NODE REPLICAS");
+    }
+
+    public CompletableFuture<RpcResponse> getBucketIds() {
+        return call("INFO BUCKET IDS");
+    }
+
     public CompletableFuture<RpcResponse> getNodeInfo() {
         return call("INFO NODE ALL");
     }
 
     public CompletableFuture<RpcResponse> primarize(String host, int port) {
-        return call(String.format("NODE PRIMARIZE %s@%d", host, port));
+        return call("NODE PRIMARIZE %s@%d", host, port);
+    }
+
+    public CompletableFuture<RpcResponse> join(NodeBase base) {
+        return call("CLUSTER NODE JOIN %s@%d", base.getHost(), base.getPort());
     }
 
     public CompletableFuture<RpcResponse> replicate(String host, int port) {
-        return call(String.format("NODE REPLICATE %s@%d", host, port));
+        return call("NODE REPLICATE SOURCE %s@%d", host, port);
+    }
+
+    public CompletableFuture<RpcResponse> replicate(NodeBase base) {
+        return replicate(base.getHost(), base.getPort());
+    }
+
+    public CompletableFuture<RpcResponse> replicateClusterMap(ClusterMap map) {
+        return call("NODE REPLICATE CLUSTER %s", Parser.toJson(map));
+    }
+    
+    public CompletableFuture<RpcResponse> replicateBucketIds(String nodeId, List<String> bucketIds) {
+        return call("NODE REPLICATE BUCKET %s %s", nodeId, String.join(" ", bucketIds));
+    }
+
+    public CompletableFuture<RpcResponse> behave(NodeType type) {
+        return call("NODE BEHAVE %s", type);
     }
 
     public boolean put(String key, String value, long ttl) {
-        String request = String.format("PUT %s %s EXAT %d", key, value, ttl);
+        String request = String.format("PUT %s '%s' EXAT %d", key, value, ttl);
         return isSuccess(request);
     }
 
@@ -133,23 +181,32 @@ public class MemoraClient implements Closeable {
         return put(key, value, -1);
     }
 
-    public boolean put(List<CacheEntry> entries) {
+    public List<String> put(List<CacheEntry> entries) {
         if (entries.isEmpty()) {
-            return true;
+            return Collections.emptyList();
         }
 
         List<String> failedQueries = new ArrayList<>();
+        List<Integer> failedIndices = new ArrayList<>();
+        int failureStart = 0;
         StringBuilder builder = new StringBuilder();
         builder.append("PUT");
         int soFar = 0;
         boolean itemAdded = false;
         for (CacheEntry item : entries) {
-            builder.append(String.format(" %s %s EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
+            builder.append(String.format(" %s '%s' EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
+            failedIndices.add(failedIndices.size());
             itemAdded = true;
             if (++soFar >= PUT_BATCH_SIZE) {
                 String request = builder.toString();
                 if (!isSuccess(request)) {
                     failedQueries.add(request);
+                    failureStart = failedQueries.size();
+                } else {
+                    int removeAfter = failureStart;
+                    failedIndices.removeIf(index -> {
+                        return index >= removeAfter;
+                    });
                 }
                 builder.setLength(0);
                 builder.append("PUT");
@@ -175,7 +232,13 @@ public class MemoraClient implements Closeable {
             retries--;
         }
 
-        return failedQueries.isEmpty();
+        List<String> failedItems = new ArrayList<>();
+
+        for (int failedIndex: failedIndices) {
+            failedItems.add(entries.get(failedIndex).getKey());
+        }
+
+        return failedItems;
     }
 
     // This is the original, blocking method.
@@ -203,7 +266,7 @@ public class MemoraClient implements Closeable {
         int soFar = 0;
 
         for (CacheEntry item: entries) {
-            builder.append(String.format(" %s %s EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
+            builder.append(String.format(" %s '%s' EXAT %d", item.getKey(), item.getValue(), item.getTtl()));
             
             if (++soFar >= PUT_BATCH_SIZE) {
                 batchCommands.add(builder.toString());
@@ -258,7 +321,11 @@ public class MemoraClient implements Closeable {
     }
 
     public CompletableFuture<RpcResponse> get(String key) {
-        return call(String.format("GET %s", key));
+        return call("GET %s", key);
+    }
+
+    public CompletableFuture<RpcResponse> get(Collection<String> keys) {
+        return call("GET %s", String.join(" ", keys));
     }
 
     public boolean delete(String key) {
@@ -275,6 +342,15 @@ public class MemoraClient implements Closeable {
             return false;
         }
         return RpcStatus.OK.equals(response.getStatus());
+    }
+
+
+    public boolean matches(NodeBase base) {
+        return base.equals(base.getHost(), base.getPort());
+    }
+
+    public NodeBase getBase() {
+        return base;
     }
 
     @Override
@@ -295,5 +371,10 @@ public class MemoraClient implements Closeable {
         if (channel != null) {
             channel.close();
         }
+    }
+
+
+    public boolean isActive() {
+        return channel != null && channel.isActive();
     }
 }

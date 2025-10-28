@@ -12,8 +12,7 @@ import com.google.inject.Stage;
 import com.memora.core.MemoraClient;
 import com.memora.messages.RpcResponse;
 import com.memora.model.NodeBase;
-import com.memora.model.NodeInfo;
-import com.memora.modules.ClientModule;
+import com.memora.modules.CoreServiceModule;
 import com.memora.modules.EnvironmentModule;
 import com.memora.services.ClientManager;
 
@@ -24,8 +23,6 @@ import static com.google.inject.Guice.createInjector;
  */
 public class MemoraCLI {
 
-    private static final String SELF = "memora-cli";
-
     private Injector injector;
     private MemoraClient client;
 
@@ -35,14 +32,15 @@ public class MemoraCLI {
     private void inject() {
         injector = createInjector(
             Stage.PRODUCTION,
-            new ClientModule()
+            new CoreServiceModule()
         );
     }
 
     private void createClient(String host, int port) throws IOException, InterruptedException {
         ClientManager manager = injector.getInstance(ClientManager.class);
         NodeBase base = manager.getAddress(host, port);
-        client = manager.getOrCreate(NodeInfo.create(SELF, base));
+        String nodeId = manager.createAndAdd(base);
+        client = manager.getClient(nodeId);
     }
 
     public static void main(String[] args) throws Exception {

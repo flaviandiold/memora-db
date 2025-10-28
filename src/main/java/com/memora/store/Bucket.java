@@ -1,7 +1,7 @@
 package com.memora.store;
 
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 import com.memora.model.CacheEntry;
 import com.memora.utils.InsertionOrderMap;
@@ -17,7 +17,7 @@ import com.memora.core.MemoraClient;
  * Simple thread-safe in-memory key-value store.
  */
 @Slf4j
-public class Bucket {
+public class Bucket implements Iterable<CacheEntry> {
 
     private final String bucketId;
     private final ConcurrentHashMap<String, CacheEntry> store;
@@ -67,6 +67,24 @@ public class Bucket {
 
     public boolean stream(final MemoraClient client, final ExecutorService executor) {
         return client.put(store.values(), executor);
+    }
+
+    public void clear() {
+        store.clear();
+        insertionOrder.clear();
+    }
+
+    public boolean isEmpty() {
+        return store.isEmpty();
+    }
+
+    public Iterator<String> getKeys() {
+        return store.keySet().iterator();
+    }
+    
+    @Override
+    public Iterator<CacheEntry> iterator() {
+        return store.values().iterator();
     }
 
     private void evict() {

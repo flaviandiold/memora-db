@@ -59,7 +59,7 @@ public final class ULID {
          * The core generation logic, synchronized to ensure thread safety.
          * @return A new ULID string.
          */
-        synchronized String generate() {
+        private String generate() {
             long currentTimestamp = Instant.now().toEpochMilli() & TIMESTAMP_MASK;
 
             if (currentTimestamp > this.lastTimestamp) {

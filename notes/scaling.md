@@ -4,7 +4,7 @@ Scale up happens in two cases, one INTERNALLY and two EXTERNALLY.
 
 When the end-user gives the cluster nodes to scale up. The end user connects with any node in the cluster, if the connected node is a replica the request is simply forwarded to its primary by the replica. After connecting to any node the user sends 
 
-CLUSTER ADD NODES host1@port1 host2@port2 .... [PRIMARY | REPLICA] 
+CLUSTER NODES ADD host1@port1 host2@port2 .... [PRIMARY | REPLICA] 
 
 to the node.
 
@@ -13,6 +13,8 @@ The default property of this command is to make the added nodes as replicas. But
 A thread will be scheduled in the lexicographically sorted first node in the cluster to run after 10 minutes (this is done for primaries to delete their unnecessary keys and catch up to the current epoch) of a redistribution event to check if there are enough replicas, if yes then another scaling up event takes place.
 
 ## External Scale Up
+The lexicographically first node will what be responsible of external scaling as well. When a add nodes call is made, it is simply forwarded to the first primary.
+
 When a node is added the priority is to make the current cluster healthy. Also the recommendation while adding new nodes is to make sure the number of nodes added makes the cluster healthy. 
 
 Now when the user sends the ADD NODES command, the primary (orchestrator) that handles it does these steps.
@@ -22,7 +24,7 @@ Now when the user sends the ADD NODES command, the primary (orchestrator) that h
     1.1 If the command has no modifier (or REPLICA as the modifier) it means that the all the new nodes are added as REPLICAs and the scaling up is left to the scaling up thread.
     1.2 If the command has PRIMARY as the modifier it means that bringing up a new primary is the priority, then what happens is a new primary is exposed to the cluster and the new nodes are added as much as the replication factor demands, and if there are any more new nodes after this, they are all evenly distributed (or UNHEALTHY primaries are prioritized).
 
-3. Now if there is a primary formed among the new nodes. This data is gathered and only the new primary info is transmitted to all existing primaries by the orchestrator, saying CLUSTER JOINING new_primary@port ....
+3. Now if there is a primary formed among the new nodes. This data of the new primary info is transmitted to all existing primaries by the orchestrator, saying CLUSTER JOINING new_primary@port ....
 4. When an existing primary gets the packet, it knows how to reach the new primary. The existing primary sends the new primary its own information about itself, which includes its replica hosts and its bucket information, the new primary constructs the bucket map and cluster map using these data and marks its epoch as the latest epoch that comes from the primaries.
 5. After doing all this, the new primary says to each existing primary "CLUSTER AWARE" which means it is now aware of the cluster, you guys can start data transmission, this AWARE status is now also gossiped among primaries. After this all primaries starts a thread and transfers keys that now belong to the new primary. "REDISTRIBUTION"
 6. During this process any new write that comes and is hashed to the new node as well, is written to the current node first and then sent to the new node.

@@ -157,4 +157,14 @@ public class InsertionOrderMap<K> {
             }
         }
     }
+
+    public void clear() {
+        try {
+            listLock.lock();
+            map.clear();
+            head = tail = null;
+        } finally {
+            listLock.unlock();
+        }
+    }
 }

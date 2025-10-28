@@ -1,10 +1,11 @@
 package com.memora.model;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.Set;
-import java.util.TreeSet;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +16,7 @@ public class BucketMap {
 
     private int numberOfActiveBuckets;
     private List<BucketInfo> allBuckets;
-    private final ConcurrentHashMap<String, TreeSet<String>> nodeToBucketsMap;
+    private final ConcurrentHashMap<String, Set<String>> nodeToBucketsMap;
     private final PriorityBlockingQueue<BucketInfo> bucketInfoList;
 
     public BucketMap() {
@@ -28,10 +29,16 @@ public class BucketMap {
     }
 
     public void increaseNumberOfActiveBuckets(int incrementBy) {
+        if (numberOfActiveBuckets + incrementBy < 0 && numberOfActiveBuckets > allBuckets.size()) {
+            throw new RuntimeException("Cannot increase number of active buckets");
+        }
         numberOfActiveBuckets += incrementBy;
     }
 
     public void decreaseNumberOfActiveBuckets(int decrementBy) {
+        if (numberOfActiveBuckets - decrementBy < 0) {
+            throw new RuntimeException("Cannot decrease number of active buckets");
+        }
         numberOfActiveBuckets -= decrementBy;
     }
 
@@ -44,13 +51,21 @@ public class BucketMap {
     }
 
     public void addBuckets(List<BucketInfo> buckets) {
+        addBuckets(buckets, true);
+    }
+
+    public void addBuckets(List<BucketInfo> buckets, boolean scale) {
         buckets.forEach(bucket -> addBucket(bucket));
-        increaseNumberOfActiveBuckets(buckets.size());
         makeAllBuckets();
+        if (scale) increaseNumberOfActiveBuckets(buckets.size());
+    }
+
+    public void scale(int numberOfBuckets) {
+        increaseNumberOfActiveBuckets(numberOfBuckets);
     }
 
     private void addBucket(BucketInfo bucket) {
-        nodeToBucketsMap.computeIfAbsent(bucket.getNodeId(), k -> new TreeSet<>()).add(bucket.getBucketId());
+        nodeToBucketsMap.computeIfAbsent(bucket.getNodeId(), k -> new ConcurrentSkipListSet<>()).add(bucket.getBucketId());
         bucketInfoList.add(bucket);
     }
 
@@ -77,10 +92,26 @@ public class BucketMap {
     }
 
     public void clearBucketsOf(String nodeId) {
+        Set<String> buckets = nodeToBucketsMap.get(nodeId);
+        if (Objects.nonNull(buckets)) {
+            int size = buckets.size();
+            nodeToBucketsMap.remove(nodeId);
+            decreaseNumberOfActiveBuckets(size);
+            bucketInfoList.removeIf((bucket) -> bucket.getNodeId().equals(nodeId));
+            makeAllBuckets();
+        }
+    }
+
+
+    public void retainBucketsOf(String nodeId) {
         int size = nodeToBucketsMap.get(nodeId).size();
-        nodeToBucketsMap.remove(nodeId);
-        bucketInfoList.removeIf((bucket) -> bucket.getNodeId().equals(nodeId));
-        decreaseNumberOfActiveBuckets(size);
+        for (String otherNodeId: nodeToBucketsMap.keySet()) {
+            if (!nodeId.equals(otherNodeId)) {
+                nodeToBucketsMap.remove(otherNodeId);
+            }
+        }
+        bucketInfoList.removeIf((bucket) -> !bucket.getNodeId().equals(nodeId));
+        numberOfActiveBuckets = size;
         makeAllBuckets();
     }
 

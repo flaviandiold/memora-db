@@ -5,7 +5,6 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
-import com.memora.enums.ThreadPool;
 import com.memora.executors.ClusterExecutor;
 import com.memora.executors.DelExecutor;
 import com.memora.executors.GetExecutor;
@@ -23,6 +22,11 @@ import com.memora.services.ReplicationManager;
 import com.memora.services.ThreadPoolService;
 
 public class ServiceModule extends AbstractModule {
+
+    @Override
+    protected void configure() {
+        install(new CoreServiceModule()); 
+    }
 
     @Provides
     @Singleton
@@ -57,21 +61,25 @@ public class ServiceModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public ClusterMap provideClusterMap() {
-        return new ClusterMap(0);
+    public ReplicationManager provideReplicationManager(
+        BucketManager bucketManager,
+        ClientManager clientManager,
+        ThreadPoolService threadPoolService,
+        ClusterMap clusterMap,
+        @Named(Constants.REPLICATION_FACTOR) int replicationFactor
+    ) {
+        return new ReplicationManager(bucketManager, clientManager, threadPoolService, clusterMap, replicationFactor);
     }
 
     @Provides
     @Singleton
-    public ReplicationManager provideReplicationManager(NodeInfo nodeInfo, BucketManager bucketManager, ClientManager clientManager, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        return new ReplicationManager(nodeInfo, bucketManager, clientManager, threadPoolService, clusterMap);
-    }
-
-
-    @Provides
-    @Singleton
-    public ClusterOrchestrator provideClusterOrchestrator(NodeInfo nodeInfo, ReplicationManager replicationManager, ClientManager clientManager, ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        return new ClusterOrchestrator(nodeInfo, replicationManager, clientManager, threadPoolService, clusterMap);
+    public ClusterOrchestrator provideClusterOrchestrator(
+        ReplicationManager replicationManager,
+        ClientManager clientManager,
+        ThreadPoolService threadPoolService,
+        ClusterMap clusterMap
+    ) {
+        return new ClusterOrchestrator(replicationManager, clientManager, threadPoolService, clusterMap);
     }
 
 }

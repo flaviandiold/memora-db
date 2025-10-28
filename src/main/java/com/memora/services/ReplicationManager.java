@@ -10,6 +10,7 @@ import java.util.function.Function;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
+import com.memora.core.MemoraNode;
 import com.memora.enums.ThreadPool;
 import com.memora.model.BucketInfo;
 import com.memora.model.CacheEntry;
@@ -28,20 +29,23 @@ public class ReplicationManager {
     private final ThreadPoolService threadPoolService;
     private final ClientManager clientManager;
     private final ClusterMap clusterMap;
-    private final ArrayList<NodeInfo> inSyncReplicas;
+    private final int replicationFactor;
+    private final List<NodeInfo> inSyncReplicas;
 
     private final ThreadPool pool = ThreadPool.REPLICATION_THREAD_POOL;
 
     @Inject
-    public ReplicationManager(NodeInfo currentNode, BucketManager bucketManager, ClientManager clientManager,
-        ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        this.currentNode = currentNode;
+    public ReplicationManager(BucketManager bucketManager, ClientManager clientManager,
+        ThreadPoolService threadPoolService, ClusterMap clusterMap, int replicationFactor) {
+        this.currentNode = MemoraNode.getInfo();
         this.bucketManager = bucketManager;
         this.clientManager = clientManager;
         this.threadPoolService = threadPoolService;
         this.clusterMap = clusterMap;
+        this.replicationFactor = replicationFactor;
         this.inSyncReplicas = new ArrayList<>();
     }
+
 
     public void put(CacheEntry entry) {
         List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
@@ -86,15 +90,10 @@ public class ReplicationManager {
         executeAsync(buckets, bucket -> {
             log.info("Replicating bucket {}", bucket.getId());
             return bucket.stream(client, threadPoolService.getThreadPool(pool));
-        }).thenAccept(success -> {
-            if (success) {
-                clusterMap.addReplica(currentNode.getNodeId(), replica);
-            }
-        })
-        .exceptionally(ex -> {
+        }).exceptionally(ex -> {
             log.error("Replication failed with an exception. {}", ex);
-            return null;
-        });
+            throw new RuntimeException(ex.getMessage());
+        }).join();
     }
 
     private <T> CompletableFuture<Boolean> executeAsync(List<T> data, Function<T, Boolean> task) {
@@ -132,6 +131,7 @@ public class ReplicationManager {
             });
     }
 
+
     public void initiateReplicationOf(NodeInfo primary) throws InterruptedException, IOException {
         MemoraClient client = clientManager.getOrCreate(primary);
 
@@ -139,11 +139,32 @@ public class ReplicationManager {
             List<BucketInfo> bucketInfo = Parser.fromJson(response.getResponse(), new TypeToken<List<BucketInfo>>() {
             }.getType());
             bucketManager.createFromPrimary(bucketInfo);
-            client.primarize(currentNode.getHost(), currentNode.getPort());
+            client.primarize(currentNode.getHost(), currentNode.getPort()).join();
         }).join();
+    }
+
+    public void replicateClusterMap(ClusterMap clusterMap) {
+        clusterMap.getReplicas(currentNode.getNodeId()).forEach(replica -> {
+            clientManager.getClient(replica.getNodeId()).replicateClusterMap(clusterMap);
+        });
+    }
+
+    public void migrate(String newPrimaryId, List<String> newBuckets) {
+        bucketManager.copyBucketIds(newPrimaryId, newBuckets, false);
+        List<CacheEntry> migratingKeys = bucketManager.getMigratingKeys(newPrimaryId, newBuckets.size());
+        MemoraClient client = clientManager.getClient(newPrimaryId);
+        client.put(migratingKeys);
+        List<String> keys = migratingKeys.stream().map(CacheEntry::getKey).toList();
+        bucketManager.delete(keys);
+        keys.forEach(this::delete);
+        bucketManager.scale(newBuckets.size());
     }
 
     public void clearInSyncReplicas() {
         inSyncReplicas.clear();
+    }
+
+    public int getReplicationFactor() {
+        return replicationFactor;
     }
 }

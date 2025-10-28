@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.google.inject.Stage;
 import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
-import com.memora.modules.ClientModule;
 import com.memora.modules.CommandModule;
 import com.memora.modules.EnvironmentModule;
 import com.memora.modules.MemoraModule;
@@ -29,8 +28,7 @@ public class MemoraDB {
                     new EnvironmentModule(),
                     new MemoraModule(),
                     new CommandModule(),
-                    new ServiceModule(),
-                    new ClientModule()
+                    new ServiceModule()
             );
         } catch (Exception e) {
             log.error("Error starting MemoraDB: {}", e.getMessage());

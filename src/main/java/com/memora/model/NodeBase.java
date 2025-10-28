@@ -2,6 +2,8 @@ package com.memora.model;
 
 import java.net.InetSocketAddress;
 
+import com.memora.messages.NodeAddress;
+
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
@@ -21,5 +23,9 @@ public class NodeBase {
 
     public static NodeBase create(String host, int port) {
         return new NodeBase(host, port);
+    }
+
+    public static NodeBase create(NodeAddress address) {
+        return new NodeBase(address.getHost(), address.getPort());
     }
 }

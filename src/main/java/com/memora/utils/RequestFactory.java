@@ -3,6 +3,11 @@ package com.memora.utils;
 import com.google.protobuf.ByteString;
 import com.memora.constants.Constants;
 import com.memora.enums.Operations;
+import com.memora.messages.ClusterCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.JoinNodeCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.RemoveNodesCommand;
 import com.memora.messages.InfoCommand;
 import com.memora.messages.InfoCommand.BucketInfoRequest;
 import com.memora.messages.InfoCommand.ClusterInfoRequest;
@@ -11,8 +16,13 @@ import com.memora.messages.KeyCommand;
 import com.memora.messages.KeyCommandBatch;
 import com.memora.messages.NodeAddress;
 import com.memora.messages.NodeCommand;
+import com.memora.messages.NodeCommand.BehaveCommand;
 import com.memora.messages.NodeCommand.PrimarizeCommand;
 import com.memora.messages.NodeCommand.ReplicateCommand;
+import com.memora.messages.NodeCommand.BehaveCommand.NodeType;
+import com.memora.messages.NodeCommand.ReplicateCommand.Bucket;
+import com.memora.messages.NodeCommand.ReplicateCommand.Cluster;
+import com.memora.messages.NodeCommand.ReplicateCommand.Data;
 import com.memora.messages.PutCommand; // Renamed for clarity from KeyValueCommand
 import com.memora.messages.PutCommandBatch;
 import com.memora.messages.RpcRequest;
@@ -26,12 +36,14 @@ import java.util.regex.Pattern;
 public final class RequestFactory {
 
     // Private constructor to prevent instantiation
-    private RequestFactory() {}
+    private RequestFactory() {
+    }
 
     /**
      * Parses a command string into a structured RpcRequest protobuf object.
      *
-     * @param command The input string, e.g., "PUT key 'some value'" or "GET key1 key2".
+     * @param command The input string, e.g., "PUT key 'some value'" or "GET key1
+     *                key2".
      * @return A fully constructed RpcRequest object.
      * @throws IllegalArgumentException if the command is malformed.
      */
@@ -72,8 +84,7 @@ public final class RequestFactory {
                     throw new IllegalArgumentException("PUT requires at least one key-value pair.");
                 }
                 PutCommandBatch.Builder batchBuilder = PutCommandBatch.newBuilder();
-                
-                // CORRECTED: Using a while loop is more robust for variable argument counts.
+
                 int i = 1;
                 while (i < tokens.size()) {
                     if (i + 1 >= tokens.size()) {
@@ -125,19 +136,54 @@ public final class RequestFactory {
                 NodeCommand.Builder nodeCmdBuilder = NodeCommand.newBuilder();
                 String subCommand = tokens.get(1).toUpperCase();
                 switch (subCommand) {
-                    case "REPLICATE":
-                        if (tokens.size() != 3) {
-                            throw new IllegalArgumentException("Usage: NODE REPLICATE <host@port>");
+                    case "REPLICATE": {
+                        if (tokens.size() < 4) {
+                            throw new IllegalArgumentException("Usage: NODE REPLICATE <type> <value>");
                         }
-                        nodeCmdBuilder.setReplicate(ReplicateCommand.newBuilder()
-                                .setPrimary(parseNodeAddress(tokens.get(2))));
+                        String type = tokens.get(2).toUpperCase();
+
+                        ReplicateCommand.Builder replicateBuilder = ReplicateCommand.newBuilder();
+                        switch (type) {
+                            case "SOURCE":
+                                Data.Builder data = Data.newBuilder()
+                                        .setPrimary(parseNodeAddress(tokens.get(3)));
+                                replicateBuilder.setSource(data);
+                                break;
+                            case "BUCKET":
+                                Bucket.Builder bucket = Bucket.newBuilder();
+                                String nodeId = tokens.get(3);
+                                bucket.setNodeId(nodeId);
+
+                                for (int i = 4; i < tokens.size(); i++) {
+                                    bucket.addBucketIds(tokens.get(i));
+                                }
+
+                                replicateBuilder.setBucket(bucket);
+                                break;
+
+                            case "CLUSTER":
+                                replicateBuilder.setCluster(Cluster.newBuilder().setMap(tokens.get(3)));
+                                break;
+                            default:
+                                break;
+                        }
+
+                        nodeCmdBuilder.setReplicate(replicateBuilder);
                         break;
+                    }
                     case "PRIMARIZE":
                         PrimarizeCommand.Builder primarizeBuilder = PrimarizeCommand.newBuilder();
                         for (int i = 2; i < tokens.size(); i++) {
                             primarizeBuilder.addReplicas(parseNodeAddress(tokens.get(i)));
                         }
                         nodeCmdBuilder.setPrimarize(primarizeBuilder);
+                        break;
+                    case "BEHAVE":
+                        if (tokens.size() < 3) {
+                            throw new IllegalArgumentException("Usage: NODE BEHAVE <type>");
+                        }
+                        NodeType type = NodeType.valueOf(tokens.get(2).toUpperCase());
+                        nodeCmdBuilder.setBehave(BehaveCommand.newBuilder().setType(type));
                         break;
                     default:
                         throw new IllegalArgumentException("Unsupported NODE subcommand: " + subCommand);
@@ -169,9 +215,73 @@ public final class RequestFactory {
                             throw new IllegalArgumentException("Unsupported INFO category: " + category);
                     }
                 } catch (IllegalArgumentException e) {
-                    throw new IllegalArgumentException("Invalid INFO type '" + type + "' for category '" + category + "'");
+                    throw new IllegalArgumentException(
+                            "Invalid INFO type '" + type + "' for category '" + category + "'");
                 }
                 requestBuilder.setInfoCommand(infoCmdBuilder);
+            }
+            case CLUSTER -> {
+                if (tokens.size() < 4) {
+                    throw new IllegalArgumentException("Usage: CLUSTER <TYPE> <OPERATION> ...");
+                }
+
+                ClusterCommand.Builder clusterCmdBuilder = ClusterCommand.newBuilder();
+
+                switch (tokens.get(1).toUpperCase()) {
+                    case "NODE":
+                        String action = tokens.get(2).toUpperCase();
+                        ClusterNodeCommand.Builder nodeCmdBuilder = ClusterNodeCommand.newBuilder();
+                        switch (action) {
+                            case "ADD":
+                                if (tokens.size() < 4) {
+                                    throw new IllegalArgumentException(
+                                            "Usage: CLUSTER NODE ADD <host@port> ... [PRIMARY|REPLICA]");
+                                }
+                                AddNodesCommand.Builder addBuilder = AddNodesCommand.newBuilder();
+                                String modifierStr = tokens.get(tokens.size() - 1).toUpperCase();
+                                if (modifierStr.equals("PRIMARY") || modifierStr.equals("REPLICA")) {
+                                    modifierStr = tokens.remove(tokens.size() - 1);
+                                    AddNodesCommand.Modifier modifier = AddNodesCommand.Modifier.valueOf(modifierStr);
+                                    addBuilder.setModifier(modifier);
+                                }
+
+                                for (int i = 3; i < tokens.size(); i++) {
+                                    addBuilder.addNodes(parseNodeAddress(tokens.get(i)));
+                                }
+                                nodeCmdBuilder.setAddCommand(addBuilder);
+                                break;
+
+                            case "REMOVE":
+                                if (tokens.size() < 4) {
+                                    throw new IllegalArgumentException("Usage: CLUSTER NODE REMOVE <host@port> ...");
+                                }
+                                RemoveNodesCommand.Builder removeBuilder = RemoveNodesCommand.newBuilder();
+                                for (int i = 3; i < tokens.size(); i++) {
+                                    removeBuilder.addNodes(parseNodeAddress(tokens.get(i)));
+                                }
+                                nodeCmdBuilder.setRemoveCommand(removeBuilder);
+                                break;
+
+                            case "JOIN":
+                                if (tokens.size() < 4) {
+                                    throw new IllegalArgumentException("Usage: CLUSTER NODE JOIN <host@port>");
+                                }
+                                nodeCmdBuilder.setJoinCommand(
+                                        JoinNodeCommand.newBuilder().setNode(parseNodeAddress(tokens.get(3))));
+                                break;
+
+                            default:
+                                throw new IllegalArgumentException(
+                                        "Unsupported CLUSTER NODE action: " + action + ". Must be ADD or REMOVE.");
+                        }
+
+                        clusterCmdBuilder.setNodeCommand(nodeCmdBuilder);
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Unsupported CLUSTER type: " + tokens.get(1));
+                }
+                // Assuming RpcRequest has setClusterCommand
+                requestBuilder.setClusterCommand(clusterCmdBuilder);
             }
             default ->
                 throw new IllegalArgumentException("Unsupported operation: " + operation);
@@ -199,7 +309,8 @@ public final class RequestFactory {
     }
 
     /**
-     * Helper to remove matching single or double quotes from the start and end of a string.
+     * Helper to remove matching single or double quotes from the start and end of a
+     * string.
      */
     private static String unquote(String s) {
         if (s == null || s.length() < 2) {

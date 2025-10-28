@@ -25,16 +25,16 @@ public final class NodeInfo implements Serializable {
 
     private NodeType type;
     private NodeState status;
-    private long epoch;
-    private int heartbeatCounter;
+    private long primaryEpoch; // This changes when any changes happen within the priamry bucket (replica added/removed)
+    private long heartbeatCounter;
     private long lastUpdateTime;
     
-    public NodeInfo(String nodeId, String host, int port, long epoch, int heartbeatCounter, NodeType type, NodeState status, long lastUpdateTime) {
+    public NodeInfo(String nodeId, String host, int port, long epoch, long heartbeatCounter, NodeType type, NodeState status, long lastUpdateTime) {
         InetSocketAddress address = new InetSocketAddress(host, port);
         if (address.isUnresolved()) throw new MemoraException("Invalid address: " + address);
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId cannot be null");
         this.nodeBase = new NodeBase(address);
-        this.epoch = epoch;
+        this.primaryEpoch = epoch;
         this.heartbeatCounter = heartbeatCounter;
         this.type = Objects.requireNonNull(type, "type cannot be null");
         this.status = Objects.requireNonNull(status, "status cannot be null");
@@ -69,6 +69,11 @@ public final class NodeInfo implements Serializable {
         return NodeType.REPLICA.equals(type);
     }
 
+    public boolean isStandAlone() {
+        return NodeType.STANDALONE.equals(type);
+    }
+
+
     public String getHost() {
         return nodeBase.getHost();
     }
@@ -83,5 +88,14 @@ public final class NodeInfo implements Serializable {
 
     public int getCurrentQps() {
         return QPS.getInstance().get();
+    }
+
+    public void incrementEpoch() {
+        if (!this.isPrimary()) throw new MemoraException("Node is not a primary");
+        primaryEpoch++;
+    }
+
+    public void incrementHeartbeatCounter() {
+        heartbeatCounter++;
     }
 }

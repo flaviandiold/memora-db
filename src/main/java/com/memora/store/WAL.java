@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.memora.core.MemoraNode;
 import com.memora.core.Version;
 import com.memora.exceptions.MemoraException;
 import com.memora.messages.RpcRequest;
@@ -16,6 +17,7 @@ public class WAL {
     }
 
     public static void log(RpcRequest request) {
+        if (MemoraNode.getInfo().isStandAlone()) return;
         long version = Version.increment();
         wal.put(version, request.toByteArray());
     }

@@ -3,11 +3,15 @@ package com.memora.services;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.StreamSupport;
 
 import com.google.inject.Inject;
 import com.memora.model.BucketInfo;
@@ -26,12 +30,11 @@ public class BucketManager {
 
     @Inject
     public BucketManager(
-        String nodeId,
-        int numberOfBuckets
-    ) {
+            String nodeId,
+            int numberOfBuckets) {
         this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
-        this.buckets = new HashMap<>();
+        this.buckets = new ConcurrentHashMap<>();
         addNewBuckets(numberOfBuckets);
     }
 
@@ -41,6 +44,10 @@ public class BucketManager {
 
     public List<Bucket> getSelfBuckets() {
         return List.copyOf(buckets.values());
+    }
+
+    public List<String> getSelfBucketIds() {
+        return List.copyOf(buckets.keySet());
     }
 
     public boolean isKeyInSelf(String key) {
@@ -93,13 +100,16 @@ public class BucketManager {
             entriesOrderedByBuckets.computeIfAbsent(bucket, k -> new ArrayList<>()).add(entry);
         }
         entriesOrderedByBuckets.forEach(
-            (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket)
-        );
+                (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket));
     }
 
     public void delete(final String key) {
         Bucket bucket = getBucket(key);
         bucket.delete(key);
+    }
+
+    public void delete(final List<String> keys) {
+        keys.forEach(this::delete);
     }
 
     private void addBucket(String bucketId) {
@@ -116,12 +126,71 @@ public class BucketManager {
         });
     }
 
+    public void copyBucketIds(String nodeId, List<String> bucketIds) {
+        copyBucketIds(nodeId, bucketIds, true);
+    }
+
+    public void copyBucketIds(String nodeId, List<String> bucketIds, boolean scale) {
+        bucketMap.clearBucketsOf(nodeId);
+        List<BucketInfo> bucketInfo = bucketIds.stream().map(bucketId -> {
+            return BucketInfo.builder().bucketId(bucketId).nodeId(nodeId).build();
+        }).toList();
+
+        bucketMap.addBuckets(bucketInfo, scale);
+    }
+
     public Map<String, List<String>> getKeyToNodeMap(List<String> keys) {
         Map<String, List<String>> keyToNodeMap = new HashMap<>();
-        for (String key: keys) {
+        for (String key : keys) {
             BucketInfo bucketInfo = getBucketIdByKey(key);
             keyToNodeMap.computeIfAbsent(bucketInfo.getNodeId(), v -> new ArrayList<>()).add(key);
         }
         return keyToNodeMap;
+    }
+
+    public void scale(int newBucketCount) {
+        bucketMap.scale(newBucketCount);
+    }
+
+    public List<CacheEntry> getMigratingKeys(String newNodeId, int newBucketCount) {
+        // Calculate these counts *once* outside the stream for efficiency
+        final int currentBucketCount = bucketMap.getNumberOfActiveBuckets();
+        final int increasedBucketCount = currentBucketCount + newBucketCount;
+
+        return buckets.values() // Get the Collection<Bucket>
+                .parallelStream() // Process the buckets in parallel
+                .filter(bucket -> !bucket.isEmpty()) // Ignore empty buckets
+                .flatMap(bucket -> // Turn each bucket into a stream of *its* migrating keys
+
+                    // Create a sequential stream for the *contents* of this single bucket
+                    // The parallelism is already handled at the bucket level.
+                    StreamSupport.stream(bucket.spliterator(), false)
+                        .filter(cacheEntry -> {
+                            int bucketIndex = Router.getBucketIndex(cacheEntry.getKey(), increasedBucketCount);
+                            BucketInfo bucketInfo = getBucketInfo(bucketIndex);
+                            if (bucketInfo == null) throw new IllegalStateException("Bucket Info not found for key: " + cacheEntry.getKey());
+                            return bucketInfo.getNodeId().equals(newNodeId);
+                        })
+                )
+                .collect(Collectors.toList()); // Collect all keys into a single list
+    }
+
+    public List<String> getSelfKeys() {
+        return buckets.values() // Get the Collection<Bucket>
+                .parallelStream() // Process the buckets in parallel
+                .filter(bucket -> !bucket.isEmpty()) // Ignore empty buckets
+                .flatMap(bucket -> // Turn each bucket into a stream of *its* migrating keys
+
+                    // Create a sequential stream for the *contents* of this single bucket
+                    // The parallelism is already handled at the bucket level.
+                    StreamSupport.stream(bucket.spliterator(), false)
+                        .map(CacheEntry::getKey)
+                )
+                .collect(Collectors.toList()); // Collect all keys into a single list
+    }
+
+    public void clear() {
+        buckets.values().forEach(Bucket::clear);
+        bucketMap.retainBucketsOf(nodeId);
     }
 }

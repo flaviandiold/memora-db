@@ -18,6 +18,8 @@ services:
     ports:
       - "9091:9090"
       - "5006:5005"
+    environment:
+      - DELAY=1
     networks:
       memoranet:
         aliases:
@@ -29,6 +31,8 @@ services:
     ports:
       - "9092:9090"
       - "5007:5005"
+    environment:
+      - DELAY=2
     networks:
       memoranet:
         aliases:

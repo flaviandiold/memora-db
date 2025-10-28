@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraNode;
@@ -16,6 +15,9 @@ import com.memora.model.CacheEntry;
 import com.memora.model.NodeInfo;
 import com.memora.store.WAL;
 
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor(onConstructor = @__({@Inject}))
 public class PutExecutor extends Executor {
 
     private static final int DEFAULT_EXPIRY = -1;
@@ -23,13 +25,6 @@ public class PutExecutor extends Executor {
     private static final String EXACT_EXPIRY = "EXAT";
 
     private final MemoraNode node;
-
-    @Inject
-    public PutExecutor(
-        final MemoraNode node
-    ) {
-        this.node = node;
-    }
 
     @Override
     public RpcResponse execute(RpcRequest request) {
@@ -39,12 +34,13 @@ public class PutExecutor extends Executor {
             return node.forwardToPrimary(request).setCorrelationId(request.getCorrelationId()).build();
         }
 
-        Map<String, CacheEntry> entries = parsePutCommand(request);
+        Map<String, CacheEntry> entries = parsePutRequest(request);
         List<String> keys = new ArrayList<>(entries.keySet());
 
         if (currentNode.isPrimary()) {
             Map<String, List<String>> nodeToKeysMap = node.getKeyToNodeMap(keys);
-            if (nodeToKeysMap.size() > 1) {
+            if (nodeToKeysMap.size() > 1 ||
+                    !nodeToKeysMap.containsKey(currentNode.getNodeId())) {
                 Map<String, List<CacheEntry>> entriesByNode = new HashMap<>();
                 for (Map.Entry<String, List<String>> entry : nodeToKeysMap.entrySet()) {
                     String nodeId = entry.getKey();
@@ -65,7 +61,7 @@ public class PutExecutor extends Executor {
         return OK(request);
     }
 
-    private Map<String, CacheEntry> parsePutCommand(RpcRequest request) {
+    private Map<String, CacheEntry> parsePutRequest(RpcRequest request) {
         Map<String, CacheEntry> entries = new HashMap<>();
 
         PutCommandBatch putCommandBatch = request.getPutCommand();

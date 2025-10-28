@@ -25,6 +25,14 @@ public class EnvironmentModule extends AbstractModule {
     @Named(Constants.NODE_ID)
     @Singleton
     public String getNodeId() {
+        String delay = getEnv("DELAY");
+        if (!Objects.isNull(delay)) {
+            try {
+                Thread.sleep(Integer.parseInt(delay) * 1000);
+            } catch (InterruptedException e) {
+                log.info("Delay interrupted");
+            }
+        }
         return ULID.generate();
     }
     

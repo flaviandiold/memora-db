@@ -30,6 +30,7 @@ public class MemoraServerChannel extends ChannelInitializer<Channel> {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RpcRequest request) throws Exception {
+            log.info("Received request correlation id: {}", request.getCorrelationId());
             RpcResponse response = commandExecutor.execute(request);
             log.info("Sending response: {}", response);
             ctx.writeAndFlush(response);

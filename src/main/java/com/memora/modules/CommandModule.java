@@ -11,13 +11,14 @@ import com.memora.executors.InfoExecutor;
 import com.memora.executors.NodeExecutor;
 import com.memora.executors.PutExecutor;
 import com.memora.executors.UnknownExecutor;
+import com.memora.model.ClusterMap;
 
 public class CommandModule extends AbstractModule {
 
     @Provides
     @Singleton
     public GetExecutor provideGetExecutor(
-            final MemoraNode node
+        final MemoraNode node
     ) {
         return new GetExecutor(node);
     }
@@ -25,7 +26,7 @@ public class CommandModule extends AbstractModule {
     @Provides
     @Singleton
     public PutExecutor providePutExecutor(
-            final MemoraNode node
+        final MemoraNode node
     ) {
         return new PutExecutor(node);
     }
@@ -33,7 +34,7 @@ public class CommandModule extends AbstractModule {
     @Provides
     @Singleton
     public DelExecutor provideDelExecutor(
-            final MemoraNode node
+        final MemoraNode node
     ) {
         return new DelExecutor(node);
     }
@@ -41,7 +42,7 @@ public class CommandModule extends AbstractModule {
     @Provides
     @Singleton
     public NodeExecutor provideNodeExecutor(
-            final MemoraNode node
+        final MemoraNode node
     ) {
         return new NodeExecutor(node);
     }
@@ -49,15 +50,17 @@ public class CommandModule extends AbstractModule {
     @Provides
     @Singleton
     public InfoExecutor provideInfoExecutor(
-            MemoraNode node
+        final MemoraNode node
     ) {
         return new InfoExecutor(node);
     }
 
     @Provides
     @Singleton
-    public ClusterExecutor provideClusterExecutor() {
-        return new ClusterExecutor();
+    public ClusterExecutor provideClusterExecutor(
+        final MemoraNode node
+    ) {
+        return new ClusterExecutor(node);
     }
 
     @Provides
