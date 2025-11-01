@@ -3,21 +3,24 @@ package com.memora.services;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
 import com.memora.core.MemoraClientChannel;
 import com.memora.enums.ThreadPool;
 import com.memora.messages.RpcResponse;
+import com.memora.messages.RpcStatus;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
+import com.memora.utils.ResponseFactory;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -128,7 +131,7 @@ public class ClientManager {
     }
 
     public static void addRequest(String correlationId, CompletableFuture<RpcResponse> future) {
-        PENDING_REQUESTS.put(correlationId, future);
+        PENDING_REQUESTS.put(correlationId, future.orTimeout(10, TimeUnit.SECONDS));
     }
 
     public static void resolve(String correlationId, RpcResponse response) {

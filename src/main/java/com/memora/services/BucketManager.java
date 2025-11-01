@@ -3,20 +3,21 @@ package com.memora.services;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.StreamSupport;
 
 import com.google.inject.Inject;
+import com.memora.core.MemoraClient;
+import com.memora.core.MemoraNode;
 import com.memora.model.BucketInfo;
 import com.memora.model.BucketMap;
 import com.memora.model.CacheEntry;
+import com.memora.model.ClusterMap;
 import com.memora.store.Bucket;
 import com.memora.utils.Router;
 import com.memora.utils.ULID;
@@ -26,16 +27,26 @@ public class BucketManager {
     private final BucketMap bucketMap; // Contains data of buckets of all nodes
     private final Map<String, Bucket> buckets; // Contains buckets of current node
     private final int numberOfBuckets;
+    private final ClientManager clientManager;
+    private final ReplicationManager replicationManager;
+    private final ClusterMap clusterMap;
 
     private final String nodeId;
 
     @Inject
     public BucketManager(
-            String nodeId,
-            int numberOfBuckets) {
+        String nodeId,
+        int numberOfBuckets,
+        ReplicationManager replicationManager,
+        ClientManager clientManager,
+        ClusterMap clusterMap
+    ) {
         this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
         this.buckets = new ConcurrentHashMap<>();
+        this.replicationManager = replicationManager;
+        this.clientManager = clientManager;
+        this.clusterMap = clusterMap;
         this.numberOfBuckets = numberOfBuckets;
         addNewBuckets(numberOfBuckets);
     }
@@ -92,6 +103,7 @@ public class BucketManager {
     public void put(final CacheEntry entry) {
         Bucket bucket = getBucket(entry.getKey());
         bucket.put(entry);
+        if (MemoraNode.getInfo().isPrimary()) replicationManager.put(entry);
     }
 
     public void putAll(final Collection<CacheEntry> entries) {
@@ -102,12 +114,15 @@ public class BucketManager {
             entriesOrderedByBuckets.computeIfAbsent(bucket, k -> new ArrayList<>()).add(entry);
         }
         entriesOrderedByBuckets.forEach(
-                (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket));
+                (bucket, entriesForBucket) -> bucket.putAll(entriesForBucket)
+        );
+        if (MemoraNode.getInfo().isPrimary()) replicationManager.putAll(entries);
     }
 
     public void delete(final String key) {
         Bucket bucket = getBucket(key);
         bucket.delete(key);
+        if (MemoraNode.getInfo().isPrimary()) replicationManager.delete(key);
     }
 
     public void delete(final List<String> keys) {
@@ -126,6 +141,30 @@ public class BucketManager {
             String bucketId = bucketInfo.getBucketId();
             addBucket(bucketId);
         });
+    }
+
+    public void forgetPrimary(String nodeId) {
+        bucketMap.forgetPrimary(nodeId);
+        if (clusterMap.isNodeAfter(nodeId, MemoraNode.getInfo().getNodeId())) {
+            List<String> keys = buckets.values() // Get the Collection<Bucket>
+                .parallelStream() // Process the buckets in parallel
+                .filter(bucket -> !bucket.isEmpty()) // Ignore empty buckets
+                .flatMap(bucket -> // Turn each bucket into a stream of *its* migrating keys
+
+                    // Create a sequential stream for the *contents* of this single bucket
+                    // The parallelism is already handled at the bucket level.
+                    StreamSupport.stream(bucket.spliterator(), false)
+                        .filter(cacheEntry -> {
+                            BucketInfo bucketInfo = getBucketIdByKey(cacheEntry.getKey());
+                            if (bucketInfo == null) throw new IllegalStateException("Bucket Info not found for key: " + cacheEntry.getKey());
+                            return !bucketInfo.getNodeId().equals(MemoraNode.getInfo().getNodeId());
+                        })
+                        .map(CacheEntry::getKey)
+                )
+                .collect(Collectors.toList()); // Collect all keys into a single list
+            
+            this.delete(keys);
+        }
     }
 
     public void copyBucketIds(String nodeId, List<String> bucketIds) {
@@ -152,6 +191,18 @@ public class BucketManager {
 
     public void scale(int newBucketCount) {
         bucketMap.scale(newBucketCount);
+    }
+
+
+    public void migrate(String newPrimaryId, List<String> newBuckets) {
+        copyBucketIds(newPrimaryId, newBuckets, false);
+        List<CacheEntry> migratingKeys = getMigratingKeys(newPrimaryId, newBuckets.size());
+        MemoraClient client = clientManager.getClient(newPrimaryId);
+        client.put(migratingKeys);
+        List<String> keys = migratingKeys.stream().map(CacheEntry::getKey).toList();
+        delete(keys);
+        keys.forEach(replicationManager::delete);
+        scale(newBuckets.size());
     }
 
     public List<CacheEntry> getMigratingKeys(String newNodeId, int newBucketCount) {

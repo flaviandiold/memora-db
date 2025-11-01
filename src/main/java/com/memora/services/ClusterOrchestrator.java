@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -15,8 +14,7 @@ import java.util.concurrent.ExecutionException;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
-import com.memora.core.MemoraNode;
-import com.memora.model.CacheEntry;
+import com.memora.model.BucketInfo;
 import com.memora.model.ClusterInfo;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeBase;
@@ -28,19 +26,20 @@ import com.memora.enums.ClusterState;
 import com.memora.enums.NodeType;
 import com.memora.enums.ThreadPool;
 import com.memora.exceptions.MemoraException;
-import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
-import com.memora.messages.RpcStatus;
 import com.memora.utils.Parser;
-import com.memora.utils.ResponseFactory;
 
 import static com.memora.constants.Constants.SCALING_COOLDOWN_IN_MINS;
 import static com.memora.constants.Constants.SCALING_REPLICATION_FACTOR;
 
+import static com.memora.utils.CommonUtils.resolveFutures;
+import static com.memora.core.MemoraNode.getInfo;
+import static com.memora.core.MemoraNode.getNodeId;
+
 @Slf4j
 public final class ClusterOrchestrator {
 
-    private final NodeInfo currentNode;
+    private final BucketManager bucketManager;
     private final ReplicationManager replicationManager;
     private final ClientManager clientManager;
     private final ThreadPoolService threadPoolService;
@@ -48,10 +47,11 @@ public final class ClusterOrchestrator {
     private final Set<String> inReplication;
 
     @Inject
-    public ClusterOrchestrator(ReplicationManager replicationManager, ClientManager clientManager,
+    public ClusterOrchestrator(BucketManager bucketManager, ReplicationManager replicationManager,
+            ClientManager clientManager,
             ThreadPoolService threadPoolService, ClusterMap clusterMap) {
         log.info("Starting cluster orchestrator...");
-        this.currentNode = MemoraNode.getInfo();
+        this.bucketManager = bucketManager;
         this.replicationManager = replicationManager;
         this.threadPoolService = threadPoolService;
         this.clientManager = clientManager;
@@ -81,28 +81,29 @@ public final class ClusterOrchestrator {
         String replicaId = null;
         try {
             final NodeBase base = clientManager.getAddress(host, port);
-            if (currentNode.equals(base.getHost(), base.getPort())) {
+            if (getInfo().equals(base.getHost(), base.getPort())) {
                 throw new MemoraException("Cannot replicate to self");
             }
             replicaId = clientManager.createAndAdd(base);
             if (inReplication.contains(replicaId))
                 return;
 
-            if (!NodeType.PRIMARY.equals(currentNode.getType())) {
-                switch (currentNode.getType()) {
+            if (!NodeType.PRIMARY.equals(getInfo().getType())) {
+                switch (getInfo().getType()) {
                     case STANDALONE -> {
-                        currentNode.setType(NodeType.PRIMARY);
-                        clusterMap.addPrimary(currentNode);
+                        getInfo().setType(NodeType.PRIMARY);
+                        clusterMap.addPrimary(getInfo());
                     }
                     case REPLICA -> {
-                        NodeInfo myPrimary = clusterMap.getMyPrimary(currentNode.getNodeId());
+                        NodeInfo myPrimary = clusterMap.getMyPrimary(getNodeId());
                         clientManager.getOrCreate(myPrimary).primarize(host, port);
                         return;
                     }
                 }
             }
 
-            if (clusterMap.isPrimaryOf(replicaId, currentNode.getNodeId())) return;
+            if (clusterMap.isPrimaryOf(replicaId, getNodeId()))
+                return;
             inReplication.add(replicaId);
 
             final MemoraClient client = clientManager.getOrCreate(replicaId, base);
@@ -117,19 +118,19 @@ public final class ClusterOrchestrator {
              * Removing current node as replica
              * And adding current node as primary to the recieved replicaId
              */
-            NodeInfo replica = NodeInfo.create(replicaId, host, port);
-            currentNode.incrementEpoch();
-            client.replicate(currentNode.getHost(), currentNode.getPort()).join();
-            replicationManager.replicateDataTo(replica);
-            clusterMap.addReplica(currentNode.getNodeId(), replica);
+            NodeInfo replica = Parser.fromJson(client.getNodeInfo().get().getResponse(), NodeInfo.class);
+            getInfo().incrementEpoch();
+            client.replicate(getInfo().getHost(), getInfo().getPort()).join();
+            replicationManager.replicateDataTo(replica, bucketManager.getSelfBuckets());
+            clusterMap.addReplica(getNodeId(), replica);
             replicateClusterMap();
             inReplication.remove(replicaId);
         } catch (IOException | InterruptedException | ExecutionException | RuntimeException e) {
+            log.error("Failed to primarize to {}:{} {}", host, port, e);
             if (Objects.nonNull(replicaId)) {
                 clusterMap.removeReplica(replicaId);
                 inReplication.remove(replicaId);
             }
-            log.error("Failed to primarize to {}:{}", host, port);
             throw new RuntimeException(e.getMessage());
         }
     }
@@ -146,32 +147,60 @@ public final class ClusterOrchestrator {
     public void replicate(String host, int port) {
         try {
             final NodeBase base = clientManager.getAddress(host, port);
-            if (currentNode.equals(base.getHost(), base.getPort())) {
+            if (getInfo().equals(base.getHost(), base.getPort())) {
                 throw new MemoraException("Cannot replicate to self");
             }
-            switch (currentNode.getType()) {
+            switch (getInfo().getType()) {
                 case PRIMARY -> {
                     throw new MemoraException("A primary node should not replicate another node");
                 }
             }
 
             final String primaryId = clientManager.createAndAdd(base);
+            final String replicaId = getNodeId();
+            if (clusterMap.isPrimaryOf(replicaId, primaryId)) {
+                NodeInfo currentNode = getInfo();
+                clientManager.getClient(primaryId).primarize(currentNode.getHost(), currentNode.getPort()).join();
+                return;
+            }
 
             final MemoraClient client = clientManager.getOrCreate(primaryId, base);
             behave(NodeType.REPLICA);
-            final NodeInfo primary = NodeInfo.create(primaryId, host, port);
+            final NodeInfo primary = Parser.fromJson(client.getNodeInfo().get().getResponse(), NodeInfo.class);
             /**
              * Removing current node as primary
              * And adding current node as replica to the recieved primaryId
              */
             clientManager.addClient(primaryId, client);
             clusterMap.addPrimary(primary);
-            clusterMap.addReplica(primaryId, currentNode);
-            replicationManager.initiateReplicationOf(primary);
-        } catch (IOException | InterruptedException | RuntimeException e) {
+            clusterMap.addReplica(primaryId, getInfo());
+            initiateReplicationOf(primary);
+        } catch (IOException | InterruptedException | ExecutionException | RuntimeException e) {
             log.error("Failed to replicate to {}:{} {}", host, port, e.getMessage());
             throw new RuntimeException(e.getMessage());
         }
+    }
+
+    public void initiateReplicationOf(NodeInfo primary) throws InterruptedException, IOException {
+        MemoraClient client = clientManager.getOrCreate(primary);
+
+        client.getBucketMap().thenAcceptAsync(response -> {
+            List<BucketInfo> bucketInfo = Parser.fromJson(response.getResponse(), new TypeToken<List<BucketInfo>>() {
+            }.getType());
+            bucketManager.createFromPrimary(bucketInfo);
+            NodeInfo currentNode = getInfo();
+            client.primarize(currentNode.getHost(), currentNode.getPort()).join();
+        }).join();
+    }
+
+    public void removeNode(String nodeId) {
+        forgetNode(nodeId, true);
+        final List<String> primaries = List.copyOf(clusterMap.getPrimaries());
+        primaries.forEach(primary -> {
+            if (primary.equals(getInfo().getNodeId()))
+                return;
+            clientManager.getClient(primary).forget(nodeId, true);
+        });
     }
 
     public void forgetNode(String nodeId) {
@@ -179,15 +208,25 @@ public final class ClusterOrchestrator {
     }
 
     public void forgetNode(String nodeId, boolean isHard) {
-        if (isHard) clientManager.removeClient(nodeId);
+        if (getInfo().isReplica())
+            return;
+        if (!clusterMap.containsNode(nodeId))
+            return;
+
+        if (isHard)
+            clientManager.removeClient(nodeId);
         boolean isPrimary = clusterMap.isPrimary(nodeId);
+
+        // Forgetting a primary will cause the keys to be lost.
         if (isPrimary && isHard) {
+            final List<String> replicasOfForgottenPrimary = clusterMap.getReplicaIds(nodeId);
             clusterMap.removePrimary(nodeId);
-            // MORE TO DO
+            replicationManager.distributeReplicas(replicasOfForgottenPrimary);
+            bucketManager.forgetPrimary(nodeId);
         } else {
             clusterMap.removeReplica(nodeId);
         }
-        replicateClusterMap();
+        replicationManager.forgetNode(nodeId);
     }
 
     public void mergeClusterMap(ClusterMap clusterMap) {
@@ -199,96 +238,16 @@ public final class ClusterOrchestrator {
     }
 
     public void replicateClusterMap() {
-        if (MemoraNode.getInfo().isPrimary()) {
+        if (getInfo().isPrimary()) {
             replicationManager.replicateClusterMap(this.clusterMap);
         }
     }
 
-    public RpcResponse.Builder forwardGet(Map<String, List<String>> nodeToKeysMap) {
-        for (String nodeId : nodeToKeysMap.keySet()) {
-            if (!clusterMap.containsNode(nodeId)) {
-                return ResponseFactory.builder().setStatus(RpcStatus.BAD_REQUEST)
-                        .setResponse("Node " + nodeId + " not found in cluster");
-            }
-        }
-        List<String> values = new ArrayList<>();
-        RpcStatus status = RpcStatus.OK;
-
-        for (String nodeId : nodeToKeysMap.keySet()) {
-            List<String> keys = nodeToKeysMap.get(nodeId);
-            try {
-                RpcResponse response = clientManager.getClient(nodeId).get(keys).get();
-                if (!response.getStatus().equals(RpcStatus.OK) && status.equals(RpcStatus.OK)) {
-                    status = RpcStatus.PARTIAL_FULFILLMENT;
-                }
-                if (status.equals(RpcStatus.OK)) {
-                    if (keys.size() == 1) {
-                        values.add(response.getResponse());
-                    } else {
-                        List<String> responses = Parser.fromJson(response.getResponse(), new TypeToken<List<String>>() {
-                        }.getType());
-                        for (String value : responses) {
-                            values.add(value);
-                        }
-                    }
-                }
-            } catch (InterruptedException | ExecutionException e) {
-                log.error("Failed to forward get request to node {}: {}", nodeId, e.getMessage());
-                status = RpcStatus.ERROR;
-            }
-        }
-        if (values.size() == 1) {
-            if (Objects.isNull(values.get(0)))
-                return ResponseFactory.builder().setStatus(RpcStatus.NOT_FOUND);
-            else
-                return ResponseFactory.builder().setStatus(status).setResponse(values.get(0));
-        }
-
-        return ResponseFactory.builder().setStatus(status).setResponse(values.toString());
-    }
-
-    public RpcResponse.Builder forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
-        for (String nodeId : entriesByNode.keySet()) {
-            if (!clusterMap.containsNode(nodeId)) {
-                return ResponseFactory.builder().setStatus(RpcStatus.BAD_REQUEST)
-                        .setResponse("Node " + nodeId + " not found in cluster");
-            }
-        }
-        List<String> failedKeys = new ArrayList<>();
-        for (String nodeId : entriesByNode.keySet()) {
-            List<CacheEntry> entries = entriesByNode.get(nodeId);
-            List<String> failedPuts = clientManager.getClient(nodeId).put(entries);
-            if (!failedKeys.isEmpty()) {
-                failedKeys.addAll(failedPuts);
-            }
-        }
-        if (failedKeys.isEmpty()) {
-            return ResponseFactory.builder().setStatus(RpcStatus.OK);
-        } else {
-            return ResponseFactory.builder().setStatus(RpcStatus.PARTIAL_FULFILLMENT)
-                    .setResponse("Failed to put keys: " + String.join(", ", failedKeys));
-        }
-    }
-
-    public RpcResponse.Builder forwardToPrimary(RpcRequest request) {
-        String primaryId = clusterMap.getMyPrimary(currentNode.getNodeId()).getNodeId();
-        return forwardToNode(request, primaryId);
-    }
-
-    public RpcResponse.Builder forwardToNode(RpcRequest request, String nodeId) {
-        try {
-            return RpcResponse.newBuilder(clientManager.getClient(nodeId).call(request).get());
-        } catch (MemoraException | InterruptedException | ExecutionException e) {
-            log.error("Failed to forward request to node {}: {}", nodeId, e.getMessage());
-            return ResponseFactory.builder().setStatus(RpcStatus.ERROR)
-                    .setResponse("Failed to forward request to node");
-        }
-    }
-
     public void behave(NodeType type) {
-        currentNode.setType(type);
+        getInfo().setType(type);
         clusterMap.clear();
-        if (type.equals(NodeType.PRIMARY)) clusterMap.addPrimary(currentNode);
+        if (type.equals(NodeType.PRIMARY))
+            clusterMap.addPrimary(getInfo());
     }
 
     public void join(NodeBase base, List<String> buckets) {
@@ -305,13 +264,13 @@ public final class ClusterOrchestrator {
 
             List<CompletableFuture<RpcResponse>> futures = new ArrayList<>();
             futures.add(client.replicateClusterMap(clusterMap));
-            futures.add(client.replicateBucketIds(currentNode.getNodeId(), buckets));
+            futures.add(client.replicateBucketIds(getInfo().getNodeId(), buckets));
             resolveFutures(futures);
 
             int curCount = Integer.valueOf(client.getPrimariesCount().get().getResponse());
             if (curCount == primaries.size() + 1) {
                 for (String primary : primaries) {
-                    if (currentNode.getNodeId().equals(primary)) {
+                    if (getInfo().getNodeId().equals(primary)) {
                         futures.add(
                                 CompletableFuture.supplyAsync(() -> {
                                     this.processNewPrimaryJoined(newPrimaryId);
@@ -339,15 +298,17 @@ public final class ClusterOrchestrator {
                     }.getType());
             clusterMap.addPrimary(info);
             for (NodeInfo replica : replicas) {
-                clusterMap.addReplica(newPrimaryId,
-                        NodeInfo.create(replica.getNodeId(), replica.getHost(), replica.getPort()));
+                clusterMap.addReplica(newPrimaryId, replica);
             }
 
-            List<String> newBucketIds = Parser.fromJson(client.getBucketIds().get().getResponse(),
-                    new TypeToken<List<String>>() {
+            List<BucketInfo> buckets = Parser.fromJson(client.getBucketMap().get().getResponse(),
+                    new TypeToken<List<BucketInfo>>() {
                     }.getType());
 
-            replicationManager.migrate(newPrimaryId, newBucketIds);
+            List<String> newBucketIds = buckets.stream()
+                    .filter((bucketInfo) -> bucketInfo.getNodeId().equals(newPrimaryId)).map(BucketInfo::getBucketId)
+                    .toList();
+            bucketManager.migrate(newPrimaryId, newBucketIds);
             ClusterInfo.setState(ClusterState.ACTIVE);
             client.clusterUnlock().get();
             ClusterInfo.setLastScaleEvent(System.currentTimeMillis());
@@ -358,9 +319,10 @@ public final class ClusterOrchestrator {
 
     public void handleAddNodes(List<NodeBase> nodes, boolean addPrimary) {
         try {
-        handleAddNodes(nodes, addPrimary, false);
+            handleAddNodes(nodes, addPrimary, false);
         } catch (Exception e) {
-            if (addPrimary) ClusterInfo.setState(ClusterState.ACTIVE);
+            if (addPrimary)
+                ClusterInfo.setState(ClusterState.ACTIVE);
             log.error("Failed to add nodes: {}", e.getMessage());
             throw new RuntimeException("Partial scaling occured, releasing lock.");
         }
@@ -389,7 +351,7 @@ public final class ClusterOrchestrator {
             }
 
             primaries.forEach(primary -> {
-                if (primary.equals(currentNode.getNodeId())) {
+                if (primary.equals(getInfo().getNodeId())) {
                     nodeIds.forEach(this::forgetNode);
                 } else {
                     futures.add(clientManager.getClient(primary).forget(nodeIds));
@@ -399,7 +361,7 @@ public final class ClusterOrchestrator {
 
         resolveFutures(futures);
 
-        final List<String> bucketIds = replicationManager.getSelfBucketIds();
+        final List<String> bucketIds = bucketManager.getSelfBucketIds();
         NodeBase newPrimary = null;
 
         if (addPrimary) {
@@ -423,29 +385,13 @@ public final class ClusterOrchestrator {
                 futures.add(clientManager.getClient(replicaId).replicate(newPrimary));
             }
         }
-
-        for (String primary : primaries) {
-            NodeInfo primaryNode = clusterMap.getNode(primary);
-            int replicasNeeded = replicationManager.getDesiredReplicaCount()
-                    - clusterMap.getReplicaIds(primary).size();
-            while (nodePicker < sortedNodes.size() && replicasNeeded-- > 0) {
-                String replicaId = nodeIds.get(nodePicker++);
-                futures.add(clientManager.getClient(replicaId).replicate(primaryNode.getHost(),
-                        primaryNode.getPort()));
-            }
-        }
-
-        while (nodePicker < sortedNodes.size()) {
-            NodeInfo primary = clusterMap.getNode(primaries.get(nodePicker % primaries.size()));
-            futures.add(clientManager.getClient(nodeIds.get(nodePicker++)).replicate(primary.getHost(),
-                    primary.getPort()));
-        }
-
         resolveFutures(futures);
+
+        replicationManager.distributeReplicas(nodeIds, nodePicker);
 
         if (Objects.nonNull(newPrimary)) {
             for (String primary : primaries) {
-                if (currentNode.getNodeId().equals(primary)) {
+                if (getInfo().getNodeId().equals(primary)) {
                     NodeBase newPrimaryBase = newPrimary;
                     futures.add(
                             CompletableFuture.supplyAsync(() -> {
@@ -462,23 +408,17 @@ public final class ClusterOrchestrator {
         resolveFutures(futures);
     }
 
-    public void resolveFutures(List<CompletableFuture<RpcResponse>> futures)
-            throws InterruptedException, ExecutionException {
-        for (CompletableFuture<RpcResponse> future : futures)
-            future.get();
-        futures.clear();
-    }
-
     public String getClusterLeader() {
         return clusterMap.getClusterLeader();
     }
 
     public void internalScaling() {
         final String leader = getClusterLeader();
-        if (!currentNode.getNodeId().equals(leader) ||
+        if (!getInfo().getNodeId().equals(leader) ||
                 ClusterInfo.getState().equals(ClusterState.REDISTRIBUTION_LOCKED) ||
                 ClusterInfo.getState().equals(ClusterState.REDISTRIBUTING) ||
-                System.currentTimeMillis() < (ClusterInfo.getLastScaleEvent() + SCALING_COOLDOWN_IN_MINS * 60 * 1000))
+                System.currentTimeMillis() < (ClusterInfo.getLastScaleEvent() + SCALING_COOLDOWN_IN_MINS * 60 * 1000)
+            )
             return;
 
         final int replicationFactor = replicationManager.getDesiredReplicaCount();
@@ -487,7 +427,7 @@ public final class ClusterOrchestrator {
 
         for (String primary : primaries) {
             List<NodeInfo> replicas;
-            if (currentNode.getNodeId().equals(primary)) {
+            if (getInfo().getNodeId().equals(primary)) {
                 replicas = clusterMap.getReplicas(primary);
             } else {
                 MemoraClient client = clientManager.getClient(primary);
@@ -513,7 +453,7 @@ public final class ClusterOrchestrator {
             }
         }
 
-        if (extraReplicas.size() > (SCALING_REPLICATION_FACTOR * replicationFactor + 1)) {
+        if (extraReplicas.size() >= (SCALING_REPLICATION_FACTOR * replicationFactor + 1)) {
             CompletableFuture.runAsync(() -> {
                 try {
                     log.info("Scaling up cluster");
@@ -528,7 +468,7 @@ public final class ClusterOrchestrator {
     }
 
     public void buildCluster() {
-        if (!NodeType.STANDALONE.equals(currentNode.getType())) {
+        if (!NodeType.STANDALONE.equals(getInfo().getType())) {
             log.info("Cluster already built.");
             return;
         }

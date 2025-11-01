@@ -8,7 +8,6 @@ import com.memora.messages.RpcResponse;
 import com.memora.messages.InfoCommand.BucketInfoRequest;
 import com.memora.messages.InfoCommand.ClusterInfoRequest;
 import com.memora.messages.InfoCommand.NodeInfoRequest;
-import com.memora.model.BucketInfo;
 import com.memora.utils.Parser;
 
 public class InfoExecutor extends Executor {

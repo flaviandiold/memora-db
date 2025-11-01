@@ -274,12 +274,21 @@ public final class RequestFactory {
 
                             case "FORGET":
                                 if (tokens.size() < 4) {
-                                    throw new IllegalArgumentException("Usage: CLUSTER NODE REMOVE <host@port> ...");
+                                    throw new IllegalArgumentException("Usage: CLUSTER NODE FORGET <host@port> ...");
                                 }
                                 ForgetCommand.Builder forgetBuilder = ForgetCommand.newBuilder();
+
+                                String lastToken = tokens.get(tokens.size() - 1).toUpperCase();
+                                boolean removeLastToken = lastToken.equals("HARD") || lastToken.equals("SOFT");
+                                if (removeLastToken) {
+                                    tokens.remove(tokens.size() - 1);
+                                    forgetBuilder.setForce(lastToken.equals("HARD"));
+                                }
+                                
                                 for (int i = 3; i < tokens.size(); i++) {
                                     forgetBuilder.addNodes(tokens.get(i));
                                 }
+
                                 nodeCmdBuilder.setForgetCommand(forgetBuilder);
                                 break;
 

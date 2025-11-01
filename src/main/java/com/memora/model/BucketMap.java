@@ -116,6 +116,10 @@ public class BucketMap {
         makeAllBuckets();
     }
 
+    public void forgetPrimary(String nodeId) {
+        clearBucketsOf(nodeId);
+    }
+
     public void clearAll() {
         nodeToBucketsMap.clear();
         bucketInfoList.clear();

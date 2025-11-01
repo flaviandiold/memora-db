@@ -130,20 +130,55 @@ public class ReplicationManager {
     }
 
     public void replicateClusterMap(ClusterMap clusterMap) {
-        clusterMap.getReplicas(currentNode.getNodeId()).forEach(replica -> {
+        clusterMap.getReplicas(getNodeId()).forEach(replica -> {
             clientManager.getClient(replica.getNodeId()).replicateClusterMap(clusterMap);
         });
     }
 
-    public void migrate(String newPrimaryId, List<String> newBuckets) {
-        bucketManager.copyBucketIds(newPrimaryId, newBuckets, false);
-        List<CacheEntry> migratingKeys = bucketManager.getMigratingKeys(newPrimaryId, newBuckets.size());
-        MemoraClient client = clientManager.getClient(newPrimaryId);
-        client.put(migratingKeys);
-        List<String> keys = migratingKeys.stream().map(CacheEntry::getKey).toList();
-        bucketManager.delete(keys);
-        keys.forEach(this::delete);
-        bucketManager.scale(newBuckets.size());
+    public void forgetNode(String nodeId) {
+        List<NodeInfo> replicas = clusterMap.getReplicas(getNodeId());
+        executeAsync(replicas, replica -> {
+            try {
+                return clientManager.getOrCreate(replica).forgetWithoutFailure(nodeId);
+            } catch (Exception e) {
+                return CompletableFuture.completedFuture(false);
+            }
+        });
+    }
+
+    public void distributeReplicas(List<String> replicaIds) {
+        distributeReplicas(replicaIds, 0);
+    }
+
+
+    public void distributeReplicas(List<String> replicaIds, int startFrom) {
+        final List<String> primaries = List.copyOf(clusterMap.getPrimaries());
+        final List<CompletableFuture<RpcResponse>> futures = new ArrayList<>();
+        int nodePicker = startFrom;
+
+        for (String primary : primaries) {
+            NodeInfo primaryNode = clusterMap.getNode(primary);
+            int replicasNeeded = this.getDesiredReplicaCount()
+                    - clusterMap.getReplicaIds(primary).size();
+            while (nodePicker < replicaIds.size() && replicasNeeded-- > 0) {
+                String replicaId = replicaIds.get(nodePicker++);
+                futures.add(clientManager.getClient(replicaId).replicate(primaryNode.getHost(),
+                        primaryNode.getPort()));
+            }
+        }
+
+        while (nodePicker < replicaIds.size()) {
+            NodeInfo primary = clusterMap.getNode(primaries.get(nodePicker % primaries.size()));
+            futures.add(clientManager.getClient(replicaIds.get(nodePicker++)).replicate(primary.getHost(),
+                    primary.getPort()));
+        }
+
+        try {
+            resolveFutures(futures);
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException("Partial distribution occured");
+        }
+        
     }
 
     public void clearInSyncReplicas() {

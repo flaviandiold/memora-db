@@ -161,6 +161,7 @@ message ClusterCommand {
 
         message ForgetCommand {
           repeated string nodes = 1;
+          bool force = 2;
         }
 
         message LockCommand {

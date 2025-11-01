@@ -1,7 +1,5 @@
 package com.memora.modules;
 
-import java.util.List;
-
 import com.google.inject.AbstractModule;
 import com.google.inject.Provider;
 import com.google.inject.Provides;
@@ -12,12 +10,11 @@ import com.memora.constants.Constants;
 import com.memora.core.MemoraServerChannel;
 import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
-import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
 import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
-import com.memora.services.ReplicationManager;
+import com.memora.services.ForwarderService;
 import com.memora.services.ThreadPoolService;
 
 public class MemoraModule extends AbstractModule {
@@ -40,9 +37,9 @@ public class MemoraModule extends AbstractModule {
         final BucketManager bucketManager,
         final ThreadPoolService threadPoolService,
         final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
-        final Provider<ReplicationManager> replicationManagerProvider
+        final Provider<ForwarderService> forwarderServiceProvider
     ) {
-        return new MemoraNode(nodeInfo, threadPoolService, bucketManager, clusterOrchestratorProvider, replicationManagerProvider);
+        return new MemoraNode(nodeInfo, threadPoolService, bucketManager, forwarderServiceProvider, clusterOrchestratorProvider);
     }
 
     @Provides

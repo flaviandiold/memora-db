@@ -8,6 +8,7 @@ import com.memora.utils.InsertionOrderMap;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
@@ -65,8 +66,8 @@ public class Bucket implements Iterable<CacheEntry> {
         insertionOrder.remove(key);
     }
 
-    public boolean stream(final MemoraClient client, final ExecutorService executor) {
-        return client.put(store.values(), executor);
+    public CompletableFuture<Boolean> stream(final MemoraClient client, final ExecutorService executor) {
+        return client.putAsync(store.values(), executor);
     }
 
     public void clear() {

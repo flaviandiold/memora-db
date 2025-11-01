@@ -7,21 +7,18 @@ import java.util.Objects;
 
 import com.google.inject.Inject;
 import com.google.inject.Provider;
-import com.memora.enums.ClusterState;
 import com.memora.enums.NodeType;
 import com.memora.enums.ThreadPool;
-import com.memora.exceptions.MemoraException;
 import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.model.BucketInfo;
 import com.memora.model.CacheEntry;
-import com.memora.model.ClusterInfo;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
 import com.memora.model.NodeBase;
 import com.memora.services.BucketManager;
 import com.memora.services.ClusterOrchestrator;
-import com.memora.services.ReplicationManager;
+import com.memora.services.ForwarderService;
 import com.memora.services.ThreadPoolService;
 import com.memora.store.Bucket;
 import com.memora.utils.QPS;
@@ -35,25 +32,25 @@ public class MemoraNode {
 
     private final BucketManager bucketManager;
     private final ThreadPoolService threadPoolService;
+    private final Provider<ForwarderService> forwarderServiceProvider;
     private final Provider<ClusterOrchestrator> clusterOrchestratorProvider;
-    private final Provider<ReplicationManager> replicationManagerProvider;
 
+    private ForwarderService forwarderService;
     private ClusterOrchestrator clusterOrchestrator;
-    private ReplicationManager replicationManager;
 
     @Inject
     public MemoraNode(
             final NodeInfo nodeInfo,
             final ThreadPoolService threadPoolService,
             final BucketManager bucketManager,
-            final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
-            final Provider<ReplicationManager> replicationManagerProvider
+            final Provider<ForwarderService> forwarderServiceProvider,
+            final Provider<ClusterOrchestrator> clusterOrchestratorProvider
     ) {
         info = nodeInfo;
         this.bucketManager = bucketManager;
         this.threadPoolService = threadPoolService;
+        this.forwarderServiceProvider = forwarderServiceProvider;
         this.clusterOrchestratorProvider = clusterOrchestratorProvider;
-        this.replicationManagerProvider = replicationManagerProvider;
 
         log.info("Node initialized with ID: {}, Host: {}, Port: {}", info.getNodeId(), info.getHost(), info.getPort());
     }
@@ -63,6 +60,10 @@ public class MemoraNode {
         qps.initialize();
 
         log.info("Node started successfully.");
+    }
+
+    public static String getNodeId() {
+        return info.getNodeId();
     }
 
     public static NodeInfo getInfo() {
@@ -88,24 +89,24 @@ public class MemoraNode {
     }
 
     public RpcResponse.Builder forwardToPrimary(RpcRequest request) {
-        return getClusterOrchestrator().forwardToPrimary(request);
+        return getForwarderService().forwardToPrimary(request);
     }
 
     public RpcResponse.Builder forwardPut(Map<String, List<CacheEntry>> entriesByNode) {
-        return getClusterOrchestrator().forwardPut(entriesByNode);
+        return getForwarderService().forwardPut(entriesByNode);
     }
 
     public RpcResponse.Builder forwardGet(Map<String, List<String>> nodeToKeysMap) {
-        return getClusterOrchestrator().forwardGet(nodeToKeysMap);
+        return getForwarderService().forwardGet(nodeToKeysMap);
     }
 
         
     public RpcResponse.Builder forwardToNode(RpcRequest request, String nodeId) {
-        return getClusterOrchestrator().forwardToNode(request, nodeId);
+        return getForwarderService().forwardToNode(request, nodeId);
     }
 
     public void addNodes(List<NodeBase> nodes, boolean addPrimary) {
-            getClusterOrchestrator().handleAddNodes(nodes, addPrimary);
+        getClusterOrchestrator().handleAddNodes(nodes, addPrimary);
     }
 
     public List<String> getSelfKeys() {
@@ -116,27 +117,18 @@ public class MemoraNode {
         increaseQPS();
         bucketManager.put(entry);
         handleMutation();
-        if (info.isPrimary()) {
-            getReplicationManager().put(entry);
-        }
     }
 
     public void putAll(final Collection<CacheEntry> entries) {
         increaseQPS();
         bucketManager.putAll(entries);
         handleMutation();
-        if (info.isPrimary()) {
-            getReplicationManager().putAll(entries);
-        }
     }
 
     public void delete(String key) {
         increaseQPS();
         bucketManager.delete(key);
         handleMutation();
-        if (info.isPrimary()) {
-            getReplicationManager().delete(key);
-        }
     }
 
     public CacheEntry get(String key) {
@@ -177,8 +169,12 @@ public class MemoraNode {
         }
     }
 
-    public void forget(String nodeId) {
-        getClusterOrchestrator().forgetNode(nodeId);
+    public void remove(String nodeId) {
+        getClusterOrchestrator().removeNode(nodeId);
+    }
+
+    public void forget(String nodeId, boolean force) {
+        getClusterOrchestrator().forgetNode(nodeId, force);
     }
 
     public void buildCluster() {
@@ -207,11 +203,11 @@ public class MemoraNode {
         return clusterOrchestrator;
     }
 
-    private ReplicationManager getReplicationManager() {
-        if (Objects.isNull(replicationManager)) {
-            replicationManager = replicationManagerProvider.get();
+    private ForwarderService getForwarderService() {
+        if (Objects.isNull(forwarderService)) {
+            forwarderService = forwarderServiceProvider.get();
         }
-        return replicationManager;
+        return forwarderService;
     }
 
     private void increaseQPS() {

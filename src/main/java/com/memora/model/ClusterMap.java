@@ -48,7 +48,6 @@ public class ClusterMap {
         primaries.remove(primaryId);
         removeNode(primaryId);
         primaryToReplicasMap.remove(primaryId);
-        replicaToPrimaryMap.remove(primaryId);
     }
 
     public long getEpoch() {
@@ -60,21 +59,42 @@ public class ClusterMap {
     }
 
     public void addReplica(String primaryId, NodeInfo replica) {
-        addNode(replica);
-        replicaToPrimaryMap.compute(replica.getNodeId(), (replicaId, prevPrimaryId) -> {
-            if (!Objects.isNull(prevPrimaryId))
-                primaryToReplicasMap.get(prevPrimaryId).remove(replicaId);
+        // 1. Add the node to the cluster's main list (this seems fine)
+        addNode(replica); 
+        
+        String replicaId = replica.getNodeId();
+
+        // 2. Atomically update the replica-to-primary mapping.
+        //    'put' returns the *previous* primary ID this replica was mapped to.
+        String prevPrimaryId = replicaToPrimaryMap.put(replicaId, primaryId);
+
+        // 3. Atomically add the replica to the *new* primary's set of replicas.
+        //    This is safe and will create the set if it doesn't exist.
+        primaryToReplicasMap
+            .computeIfAbsent(primaryId, id -> new ConcurrentSkipListSet<>(getComparator()))
+            .add(replicaId);
+        
+        // 4. If there was an old primary, and it's not the same as the new one,
+        //    atomically remove the replica from the *old* primary's set.
+        if (prevPrimaryId != null && !prevPrimaryId.equals(primaryId)) {
             
-            primaryToReplicasMap
-                .computeIfAbsent(primaryId, id -> new ConcurrentSkipListSet<>(getComparator()))
-                .add(replicaId);
-            return primaryId;
-        });
+            // computeIfPresent is atomic. It finds the set, lets you modify it,
+            // and handles the case where the set doesn't exist (it does nothing).
+            primaryToReplicasMap.computeIfPresent(prevPrimaryId, (key, replicaSet) -> {
+                replicaSet.remove(replicaId);
+                
+                // Best Practice: If the set is now empty, return null
+                // to remove the old primary's entry from the map.
+                return replicaSet.isEmpty() ? null : replicaSet;
+            });
+        }
     }
 
     public void removeReplica(String replicaId) {
         String primaryId = replicaToPrimaryMap.get(replicaId);
-        primaryToReplicasMap.get(primaryId).remove(replicaId);
+        if (Objects.nonNull(primaryToReplicasMap.get(primaryId))) {
+            primaryToReplicasMap.get(primaryId).remove(replicaId);
+        }
         replicaToPrimaryMap.remove(replicaId);
         removeNode(replicaId);
     }
@@ -114,6 +134,10 @@ public class ClusterMap {
 
     public String getClusterLeader() {
         return primaries.first();
+    }
+
+    public boolean isNodeAfter(String second, String first) {
+        return getComparator().compare(second, first) > 0;
     }
 
     public void incrementEpoch() {
@@ -169,7 +193,7 @@ public class ClusterMap {
 
     public void validateNewPrimary(String newPrimary) {
         String lastPrimary = primaries.last();
-        if (getComparator().compare(newPrimary, lastPrimary) < 0) {
+        if (isNodeAfter(lastPrimary, newPrimary)) {
             throw new MemoraException("New Primary ID cannot be smaller than the last Primary ID");
         }
     }

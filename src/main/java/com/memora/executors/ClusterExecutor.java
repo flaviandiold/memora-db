@@ -10,6 +10,7 @@ import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.ForgetCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.LockCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand.Modifier;
 import com.memora.model.ClusterInfo;
@@ -33,7 +34,7 @@ public class ClusterExecutor extends Executor {
                     case ADD_COMMAND -> {
                         if (!MemoraNode.getInfo().isStandAlone()) {
                             String clusterLeader = node.getClusterLeader();
-                            if (!MemoraNode.getInfo().getNodeId().equals(clusterLeader)) {
+                            if (!MemoraNode.getNodeId().equals(clusterLeader)) {
                                 yield node
                                     .forwardToNode(request, clusterLeader)
                                     .setCorrelationId(request.getCorrelationId())
@@ -51,17 +52,30 @@ public class ClusterExecutor extends Executor {
                         node.addNodes(nodes, addPrimary);
                         yield OK(request);
                     }
-                    case JOIN_COMMAND -> {
-                        final NodeBase newNode = NodeBase.create(nodeCommand.getJoinCommand().getNode());
-                        node.join(newNode);
+                    case REMOVE_COMMAND -> {
+                        if (MemoraNode.getInfo().isStandAlone()) yield UNSUPPORTED_OPERATION(request, "Standalone node");
+                        String clusterLeader = node.getClusterLeader();
+                        if (!MemoraNode.getNodeId().equals(clusterLeader)) {
+                            yield node
+                                .forwardToNode(request, clusterLeader)
+                                .setCorrelationId(request.getCorrelationId())
+                                .build();
+                        }
+
+                        final List<String> nodeIds = nodeCommand.getRemoveCommand().getNodesList();
+                        nodeIds.forEach(node::remove);
                         yield OK(request);
                     }
                     case FORGET_COMMAND -> {
-                        final List<String> nodeIds = nodeCommand.getForgetCommand().getNodesList();
-                        nodeIds.forEach(node::forget);
+                        final ForgetCommand forgetCommand = nodeCommand.getForgetCommand();
+                        final List<String> nodeIds = forgetCommand.getNodesList();
+                        final boolean force = forgetCommand.getForce();
+                        nodeIds.forEach((nodeId) -> node.forget(nodeId, force));
                         yield OK(request);
                     }
-                    case REMOVE_COMMAND -> {
+                    case JOIN_COMMAND -> {
+                        final NodeBase newNode = NodeBase.create(nodeCommand.getJoinCommand().getNode());
+                        node.join(newNode);
                         yield OK(request);
                     }
                     case LOCK_COMMAND -> {

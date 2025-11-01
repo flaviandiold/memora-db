@@ -17,6 +17,7 @@ import com.memora.services.BucketManager;
 import com.memora.services.ClientManager;
 import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
+import com.memora.services.ForwarderService;
 import com.memora.services.ReplicationManager;
 import com.memora.services.ThreadPoolService;
 
@@ -31,9 +32,12 @@ public class ServiceModule extends AbstractModule {
     @Singleton
     public BucketManager provideBucketManager(
             @Named(Constants.NODE_ID) String nodeId,
-            @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets
+            @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets,
+            final ReplicationManager replicationManager,
+            final ClientManager clientManager,
+            final ClusterMap clusterMap
     ) {
-        return new BucketManager(nodeId, numberOfBuckets);
+        return new BucketManager(nodeId, numberOfBuckets, replicationManager, clientManager, clusterMap);
     }
 
     @Provides
@@ -61,24 +65,30 @@ public class ServiceModule extends AbstractModule {
     @Provides
     @Singleton
     public ReplicationManager provideReplicationManager(
-        BucketManager bucketManager,
         ClientManager clientManager,
         ThreadPoolService threadPoolService,
         ClusterMap clusterMap,
         @Named(Constants.REPLICATION_FACTOR) int replicationFactor
     ) {
-        return new ReplicationManager(bucketManager, clientManager, threadPoolService, clusterMap, replicationFactor);
+        return new ReplicationManager(clientManager, threadPoolService, clusterMap, replicationFactor);
     }
 
     @Provides
     @Singleton
     public ClusterOrchestrator provideClusterOrchestrator(
+        BucketManager bucketManager,
         ReplicationManager replicationManager,
         ClientManager clientManager,
         ThreadPoolService threadPoolService,
         ClusterMap clusterMap
     ) {
-        return new ClusterOrchestrator(replicationManager, clientManager, threadPoolService, clusterMap);
+        return new ClusterOrchestrator(bucketManager, replicationManager, clientManager, threadPoolService, clusterMap);
+    }
+
+    @Provides
+    @Singleton
+    public ForwarderService provideForwarderService(ClusterMap clusterMap, ClientManager clientManager) {
+        return new ForwarderService(clusterMap, clientManager);
     }
 
 }
