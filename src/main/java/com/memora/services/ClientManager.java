@@ -2,7 +2,6 @@ package com.memora.services;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -11,26 +10,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
-import com.memora.core.MemoraClientChannel;
-import com.memora.core.MemoraNode;
-import com.memora.enums.ThreadPool;
 import com.memora.messages.RpcResponse;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.Channel;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class ClientManager {
 
-    private final Bootstrap bootstrap;
-    private final EventLoopGroup group;
     private final Map<String, MemoraClient> clientMap;
     private final ClusterMap clusterMap;
 
@@ -38,14 +27,7 @@ public class ClientManager {
 
 
     @Inject
-    public ClientManager(ThreadPoolService threadPoolService, ClusterMap clusterMap) {
-        ThreadPool clientPool = ThreadPool.CLIENT_THREAD_POOL;
-        this.group = new NioEventLoopGroup(clientPool.getSize(),
-            threadPoolService.getThreadPool(clientPool));
-        this.bootstrap = new Bootstrap();
-        this.bootstrap.group(group)
-                      .channel(NioSocketChannel.class)
-                      .handler(new MemoraClientChannel());
+    public ClientManager(ClusterMap clusterMap) {
         clientMap = new ConcurrentHashMap<>();
         this.clusterMap = clusterMap;
     }
@@ -80,8 +62,7 @@ public class ClientManager {
                 throw new IOException("Unable to resolve host: " + base.getHost());
             }
 
-            Channel channel = this.bootstrap.connect(base.getHost(), base.getPort()).sync().channel();
-            MemoraClient tempClient = new MemoraClient(channel, base, clusterMap);
+            MemoraClient tempClient = new MemoraClient(base, clusterMap);
             
             String id = nodeId.orElse(tempClient.getNodeId().get().getResponse());
             

@@ -1,20 +1,21 @@
 package com.memora.core;
 
 import com.memora.enums.NodeType;
-import com.memora.exceptions.MemoraException;
 import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.messages.RpcStatus;
+import com.memora.service.MemoraServerGrpc;
 import com.memora.utils.Parser;
 import com.memora.utils.RequestFactory;
 import com.memora.utils.ResponseFactory;
 
-import io.netty.channel.Channel;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,73 +24,60 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeBase;
 import com.memora.model.NodeInfo;
-import com.memora.services.ClientManager;
 
 /**
- * Simple blocking TCP client for cache RPC calls. Keeps a persistent connection
- * to the server.
+ * gRPC client for MemoraDB.
  */
 @Slf4j
 public class MemoraClient implements Closeable {
 
-    private final Channel channel;
+    private final ManagedChannel channel;
+    private final MemoraServerGrpc.MemoraServerStub asyncStub;
     private final NodeBase base;
     private final ClusterMap clusterMap;
-    
-    private final ReentrantLock lock = new ReentrantLock();
+
     private final int PUT_BATCH_SIZE = 50;
     private final int MAX_RETRIES = 3;
-    
-    private boolean closed = false;
 
-    public MemoraClient(Channel channel, NodeBase base, ClusterMap clusterMap) throws IOException {
-        this.channel = channel;
+    public MemoraClient(NodeBase base, ClusterMap clusterMap) {
         this.base = base;
         this.clusterMap = clusterMap;
-        if (new InetSocketAddress(base.getHost(), base.getPort()).isUnresolved()) {
-            throw new IOException("Unable to resolve host: " + base.getHost());
-        }
+        this.channel = ManagedChannelBuilder.forAddress(base.getHost(), base.getPort())
+                .build();
+        this.asyncStub = MemoraServerGrpc.newStub(channel);
     }
 
-    private CompletableFuture<RpcResponse> send(RpcRequest request) throws MemoraException {
-        if (closed) {
-            throw new MemoraException("Client is closed.");
-        }
-        if (!this.isActive()) {
-            return CompletableFuture.failedFuture(new MemoraException("Client not connected."));
-        }
-
-        // 1. Generate a unique ID and create the future
+    public CompletableFuture<RpcResponse> call(RpcRequest request) {
         CompletableFuture<RpcResponse> future = new CompletableFuture<>();
+        asyncStub.execute(request, new StreamObserver<>() {
+            private RpcResponse lastResponse;
 
-        // 2. Store the future so the response handler can find it
-        if (request.getCorrelationId() == null || request.getCorrelationId().isEmpty()) {
-            throw new MemoraException("Request must have a correlation ID.");
-        }
+            @Override
+            public void onNext(RpcResponse response) {
+                lastResponse = response;
+            }
 
-        ClientManager.addRequest(request.getCorrelationId(), future);
-        
-        // 3. Send the request
-        channel.writeAndFlush(request);
+            @Override
+            public void onError(Throwable t) {
+                future.completeExceptionally(t);
+            }
 
-        // 4. Return the future immediately
+            @Override
+            public void onCompleted() {
+                future.complete(lastResponse);
+            }
+        });
         return future;
-
     }
 
-    public CompletableFuture<RpcResponse> call(RpcRequest request) throws MemoraException {
-        return send(request);
-    }
-
-
-    public CompletableFuture<RpcResponse> call(String command) throws MemoraException {
+    public CompletableFuture<RpcResponse> call(String command) {
 
         NodeInfo info = MemoraNode.getInfo();
         long clusterEpoch = clusterMap.getEpoch();
@@ -106,17 +94,12 @@ public class MemoraClient implements Closeable {
         return call(request.build());
     }
 
-
-    public CompletableFuture<RpcResponse> call(String command, Object ...args) throws MemoraException {
+    public CompletableFuture<RpcResponse> call(String command, Object... args) {
         return call(String.format(command, args));
     }
 
     public CompletableFuture<RpcResponse> callWithoutError(String request) {
-        try {
-            return call(request);
-        } catch (MemoraException e) {
-            return  CompletableFuture.supplyAsync(() -> ResponseFactory.create(RpcStatus.ERROR));
-        }
+        return call(request).exceptionally(e -> ResponseFactory.create(RpcStatus.ERROR));
     }
 
     public CompletableFuture<RpcResponse> getNodeId() {
@@ -355,26 +338,15 @@ public class MemoraClient implements Closeable {
 
     @Override
     public void close() throws IOException {
-        lock.lock();
         try {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            closeQuietly();
-        } finally {
-            lock.unlock();
+            channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while shutting down gRPC client", e);
         }
     }
-
-    private void closeQuietly() {
-        if (channel != null) {
-            channel.close();
-        }
-    }
-
 
     public boolean isActive() {
-        return channel != null && channel.isActive();
+        return channel != null && !channel.isShutdown() && !channel.isTerminated();
     }
 }

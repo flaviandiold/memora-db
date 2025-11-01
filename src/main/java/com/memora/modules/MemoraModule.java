@@ -10,6 +10,8 @@ import com.google.inject.name.Named;
 import com.memora.MemoraDB;
 import com.memora.constants.Constants;
 import com.memora.core.MemoraServerChannel;
+import com.memora.enums.ThreadPool;
+import com.memora.core.MemoraGrpcService;
 import com.memora.core.MemoraNode;
 import com.memora.core.MemoraServer;
 import com.memora.model.NodeBase;
@@ -19,6 +21,9 @@ import com.memora.services.ClusterOrchestrator;
 import com.memora.services.CommandExecutor;
 import com.memora.services.ReplicationManager;
 import com.memora.services.ThreadPoolService;
+
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
 
 public class MemoraModule extends AbstractModule {
 
@@ -48,21 +53,24 @@ public class MemoraModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public MemoraServerChannel provideMemoraChannel(
-        final CommandExecutor executor
-    ){
-        return new MemoraServerChannel(executor);
+    public MemoraGrpcService provideMemoraGrpcService(
+        final CommandExecutor executor,
+        final ThreadPoolService threadPoolService
+    ) {
+        return new MemoraGrpcService(executor, threadPoolService);
     }
 
     @Provides
     @Singleton
     public MemoraServer provideMemoraServer(
-            @Named(Constants.NODE_HOST) String host,
+            MemoraGrpcService memoraGrpcService,
             @Named(Constants.NODE_PORT) int port,
-            final MemoraServerChannel channel,
             final ThreadPoolService threadPoolService
     ) {
-        return new MemoraServer(host, port, channel, threadPoolService);
+        return new MemoraServer(ServerBuilder.forPort(port)
+            .addService(memoraGrpcService)
+            .executor(threadPoolService.getThreadPool(ThreadPool.SERVER_THREAD_POOL))
+            .build(), threadPoolService);
     }
 
     @Provides

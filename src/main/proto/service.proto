@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package com.memora.service;
+
+import "messages.proto";
+
+option java_multiple_files = true;
+option java_package = "com.memora.service";
+
+// Memora RPC Service
+service MemoraServer {
+  // Defines a single RPC method called "execute"
+  rpc Execute (com.memora.messages.RpcRequest) returns (com.memora.messages.RpcResponse) {}
+}

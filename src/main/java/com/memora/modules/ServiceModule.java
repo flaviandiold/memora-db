@@ -5,6 +5,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.memora.constants.Constants;
+import com.memora.enums.ThreadPool;
 import com.memora.executors.ClusterExecutor;
 import com.memora.executors.DelExecutor;
 import com.memora.executors.GetExecutor;
@@ -35,6 +36,19 @@ public class ServiceModule extends AbstractModule {
             @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets
     ) {
         return new BucketManager(nodeId, numberOfBuckets);
+    }
+
+
+    @Provides
+    @Singleton
+    public ThreadPoolService provideThreadPoolService() {
+        ThreadPoolService threadPoolService = new ThreadPoolService();
+        for (ThreadPool pool : ThreadPool.getAllThreadPool()) {
+            if (!pool.isCluster()) {
+                threadPoolService.createThreadPool(pool);
+            }
+        }
+        return threadPoolService;
     }
 
     @Provides

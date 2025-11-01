@@ -39,17 +39,15 @@ public class MemoraDB {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
-                    server.close();
+                    server.stop();
                 } catch (Exception e) {
                     log.error("Error during node shutdown: {}", e.getMessage());
                 }
             }));
 
             log.info("Starting MemoraDB...");
-            server.start(node::start);
-        } catch (InterruptedException e) {
-            log.error("MemoraDB startup interrupted: {}", e.getMessage());
-            Thread.currentThread().interrupt();
+            server.start();
+            node.start();
         } catch (Exception e) {
             log.error("Error starting MemoraDB: {}", e.getMessage());
         }
