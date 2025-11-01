@@ -1,8 +1,12 @@
 package com.memora.core;
 
+import java.util.concurrent.ExecutorService;
+
+import com.memora.enums.ThreadPool;
 import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.services.CommandExecutor;
+import com.memora.services.ThreadPoolService;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -13,8 +17,6 @@ import io.netty.handler.codec.protobuf.ProtobufDecoder;
 import io.netty.handler.codec.protobuf.ProtobufEncoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
-import io.netty.util.concurrent.DefaultEventExecutorGroup;
-import io.netty.util.concurrent.EventExecutorGroup;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -22,12 +24,14 @@ public class MemoraServerChannel extends ChannelInitializer<Channel> {
 
     private final CommandExecutor commandExecutor;
     // Create a separate thread pool for business logic to avoid blocking the Netty event loop.
-    private final EventExecutorGroup businessLogicExecutor = new DefaultEventExecutorGroup(16);
+    private final ExecutorService businessLogicExecutor;
 
     public MemoraServerChannel(
-            CommandExecutor commandExecutor
+            CommandExecutor commandExecutor,
+            ThreadPoolService threadPoolService
     ) {
         this.commandExecutor = commandExecutor;
+        this.businessLogicExecutor = threadPoolService.getThreadPool(ThreadPool.EXECUTOR_THREAD_POOL);
     }
     
     private class MemoraRequestHandler extends SimpleChannelInboundHandler<RpcRequest> {
@@ -69,8 +73,7 @@ public class MemoraServerChannel extends ChannelInitializer<Channel> {
         pipeline.addLast(new ProtobufDecoder(RpcRequest.getDefaultInstance()));
 
         // === YOUR BUSINESS LOGIC ===
-        // This handler now correctly receives the RpcRequest object.
-        pipeline.addLast(businessLogicExecutor, new MemoraRequestHandler());
+        pipeline.addLast(new MemoraRequestHandler());
     }
 
 }

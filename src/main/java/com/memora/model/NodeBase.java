@@ -28,4 +28,5 @@ public class NodeBase {
     public static NodeBase create(NodeAddress address) {
         return new NodeBase(address.getHost(), address.getPort());
     }
+
 }

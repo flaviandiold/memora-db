@@ -13,7 +13,6 @@ import com.memora.executors.NodeExecutor;
 import com.memora.executors.PutExecutor;
 import com.memora.executors.UnknownExecutor;
 import com.memora.model.ClusterMap;
-import com.memora.model.NodeInfo;
 import com.memora.services.BucketManager;
 import com.memora.services.ClientManager;
 import com.memora.services.ClusterOrchestrator;

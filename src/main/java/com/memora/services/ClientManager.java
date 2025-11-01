@@ -2,6 +2,7 @@ package com.memora.services;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
 import com.memora.core.MemoraClientChannel;
-import com.memora.core.MemoraNode;
 import com.memora.enums.ThreadPool;
 import com.memora.messages.RpcResponse;
 import com.memora.model.ClusterMap;
@@ -55,6 +55,10 @@ public class ClientManager {
         clientMap.put(nodeId, client);
     }
 
+    public synchronized void removeClient(String nodeId) {
+        clientMap.remove(nodeId);
+    }
+
     public MemoraClient getOrCreate(NodeInfo node) throws InterruptedException, IOException {
         return getOrCreate(node.getNodeId(), node.getNodeBase());
     }
@@ -95,7 +99,7 @@ public class ClientManager {
         }
     }
 
-    public List<String> createAndAddAll(List<NodeBase> base) {
+    public List<String> createAndAddAll(Collection<NodeBase> base) {
        return base.stream().map(this::createAndAdd).toList();
     }
 
@@ -119,6 +123,10 @@ public class ClientManager {
         return clientMap.get(nodeId);
     }
 
+    public NodeBase getBase(String nodeId) {
+        return getClient(nodeId).getBase();
+    }
+
     public static void addRequest(String correlationId, CompletableFuture<RpcResponse> future) {
         PENDING_REQUESTS.put(correlationId, future);
     }
@@ -127,6 +135,7 @@ public class ClientManager {
         CompletableFuture<RpcResponse> future = PENDING_REQUESTS.remove(correlationId);
 
         log.info("Resolving request {}", correlationId);
+        // log.info("UNRESOLVED REQUESTS {}", PENDING_REQUESTS.keySet());
         Optional.ofNullable(future).ifPresent(f -> f.complete(response));
     }
 }

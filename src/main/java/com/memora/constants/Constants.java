@@ -4,6 +4,8 @@ public class Constants {
     private Constants() {}
 
     public static final Integer DEFAULT_BUCKET_SIZE = 1024;
+    public static final Integer SCALING_COOLDOWN_IN_MINS = 10;
+    public static final Double SCALING_REPLICATION_FACTOR = 1.0;
 
     public static final String NODE_ID = "NODE_ID";
     public static final String NODE_HOST = "NODE_HOST";
@@ -14,7 +16,7 @@ public class Constants {
     
     
     public static final String DEFAULT_PORT = "9090";
-    public static final String DEFAULT_REPLICATION_FACTOR = "2";
+    public static final String DEFAULT_REPLICATION_FACTOR = "1";
 
     public static final String ADDRESS_DELIMITER = "@";
 

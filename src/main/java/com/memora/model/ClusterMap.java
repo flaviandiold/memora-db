@@ -1,5 +1,6 @@
 package com.memora.model;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -36,15 +37,14 @@ public class ClusterMap {
     }
 
     public void addPrimary(NodeInfo primary) {
-        if (allNodes.containsKey(primary.getNodeId())) {
+        if (primaries.contains(primary.getNodeId())) {
             return;
         }
         addNode(primary);
         primaries.add(primary.getNodeId());
     }
 
-    public void removePrimary(NodeInfo primary) {
-        String primaryId = primary.getNodeId();
+    public void removePrimary(String primaryId) {
         primaries.remove(primaryId);
         removeNode(primaryId);
         primaryToReplicasMap.remove(primaryId);
@@ -84,8 +84,13 @@ public class ClusterMap {
         return replicaToPrimaryMap.get(replicaId).equals(primaryId);
     }
 
+    public boolean isPrimary(String nodeId) {
+        return primaries.contains(nodeId);
+    }
+
     public NodeInfo getMyPrimary(String replicaId) {
         String primaryId = replicaToPrimaryMap.get(replicaId);
+        if (primaryId == null) return null;
         return getNode(primaryId);
     }
 
@@ -167,6 +172,15 @@ public class ClusterMap {
         if (getComparator().compare(newPrimary, lastPrimary) < 0) {
             throw new MemoraException("New Primary ID cannot be smaller than the last Primary ID");
         }
+    }
+
+    public void validateNewNodes(Collection<String> newNodes) {
+        newNodes.stream()
+                .filter(allNodes::containsKey)
+                .findFirst()
+                .ifPresent(nodeId -> {
+                    throw new MemoraException("Node with ID " + nodeId + " already exists");
+                });
     }
     
     public void clear() {

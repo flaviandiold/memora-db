@@ -2,6 +2,7 @@ package com.memora.model;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -104,7 +105,7 @@ public class BucketMap {
 
 
     public void retainBucketsOf(String nodeId) {
-        int size = nodeToBucketsMap.get(nodeId).size();
+        int size = Optional.ofNullable(nodeToBucketsMap.get(nodeId)).orElse(Set.of()).size();
         for (String otherNodeId: nodeToBucketsMap.keySet()) {
             if (!nodeId.equals(otherNodeId)) {
                 nodeToBucketsMap.remove(otherNodeId);
@@ -112,6 +113,13 @@ public class BucketMap {
         }
         bucketInfoList.removeIf((bucket) -> !bucket.getNodeId().equals(nodeId));
         numberOfActiveBuckets = size;
+        makeAllBuckets();
+    }
+
+    public void clearAll() {
+        nodeToBucketsMap.clear();
+        bucketInfoList.clear();
+        numberOfActiveBuckets = 0;
         makeAllBuckets();
     }
 

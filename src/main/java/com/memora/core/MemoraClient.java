@@ -77,6 +77,7 @@ public class MemoraClient implements Closeable {
         ClientManager.addRequest(request.getCorrelationId(), future);
         
         // 3. Send the request
+        // log.info("Sending request: {} to {}", request, this.base);
         channel.writeAndFlush(request);
 
         // 4. Return the future immediately
@@ -170,6 +171,22 @@ public class MemoraClient implements Closeable {
 
     public CompletableFuture<RpcResponse> behave(NodeType type) {
         return call("NODE BEHAVE %s", type);
+    }
+
+    public CompletableFuture<RpcResponse> clusterLock() {
+        return call("CLUSTER NODE LOCK");
+    }
+    
+    public CompletableFuture<RpcResponse> clusterUnlock() {
+        return call("CLUSTER NODE UNLOCK");
+    }
+
+    public CompletableFuture<RpcResponse> forget(String nodeId) {
+        return call("CLUSTER NODE FORGET %s", nodeId);
+    }
+
+    public CompletableFuture<RpcResponse> forget(List<String> nodeIds) {
+        return call("CLUSTER NODE FORGET %s", String.join(" ", nodeIds));
     }
 
     public boolean put(String key, String value, long ttl) {

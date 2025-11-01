@@ -8,7 +8,7 @@ services:
       - "9090:9090"
       - "5005:5005"
     networks:
-      memoranet:
+      memora-net:
         aliases:
           - node-1
 
@@ -21,7 +21,7 @@ services:
     environment:
       - DELAY=1
     networks:
-      memoranet:
+      memora-net:
         aliases:
           - node-2
 
@@ -34,10 +34,36 @@ services:
     environment:
       - DELAY=2
     networks:
-      memoranet:
+      memora-net:
         aliases:
           - node-3
 
+  node-4:
+    build: .
+    container_name: memora-node-4
+    ports:
+      - "9093:9090"
+      - "5008:5005"
+    environment:
+      - DELAY=3
+    networks:
+      memora-net:
+        aliases:
+          - node-4
+
+  node-5:
+    build: .
+    container_name: memora-node-5
+    ports:
+      - "9094:9090"
+      - "5009:5005"
+    environment:
+      - DELAY=3
+    networks:
+      memora-net:
+        aliases:
+          - node-5
+
 networks:
-  memoranet:
+  memora-net:
     driver: bridge

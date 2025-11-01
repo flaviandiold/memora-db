@@ -6,7 +6,9 @@ import com.memora.enums.Operations;
 import com.memora.messages.ClusterCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.ForgetCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.JoinNodeCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.LockCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.RemoveNodesCommand;
 import com.memora.messages.InfoCommand;
 import com.memora.messages.InfoCommand.BucketInfoRequest;
@@ -221,7 +223,7 @@ public final class RequestFactory {
                 requestBuilder.setInfoCommand(infoCmdBuilder);
             }
             case CLUSTER -> {
-                if (tokens.size() < 4) {
+                if (tokens.size() < 3) {
                     throw new IllegalArgumentException("Usage: CLUSTER <TYPE> <OPERATION> ...");
                 }
 
@@ -257,7 +259,7 @@ public final class RequestFactory {
                                 }
                                 RemoveNodesCommand.Builder removeBuilder = RemoveNodesCommand.newBuilder();
                                 for (int i = 3; i < tokens.size(); i++) {
-                                    removeBuilder.addNodes(parseNodeAddress(tokens.get(i)));
+                                    removeBuilder.addNodes(tokens.get(i));
                                 }
                                 nodeCmdBuilder.setRemoveCommand(removeBuilder);
                                 break;
@@ -269,6 +271,26 @@ public final class RequestFactory {
                                 nodeCmdBuilder.setJoinCommand(
                                         JoinNodeCommand.newBuilder().setNode(parseNodeAddress(tokens.get(3))));
                                 break;
+
+                            case "FORGET":
+                                if (tokens.size() < 4) {
+                                    throw new IllegalArgumentException("Usage: CLUSTER NODE REMOVE <host@port> ...");
+                                }
+                                ForgetCommand.Builder forgetBuilder = ForgetCommand.newBuilder();
+                                for (int i = 3; i < tokens.size(); i++) {
+                                    forgetBuilder.addNodes(tokens.get(i));
+                                }
+                                nodeCmdBuilder.setForgetCommand(forgetBuilder);
+                                break;
+
+                            case "LOCK":
+                                nodeCmdBuilder.setLockCommand(LockCommand.newBuilder().setLock(true));
+                                break;
+
+                            case "UNLOCK":
+                                nodeCmdBuilder.setLockCommand(LockCommand.newBuilder().setLock(false));
+                                break;
+
 
                             default:
                                 throw new IllegalArgumentException(

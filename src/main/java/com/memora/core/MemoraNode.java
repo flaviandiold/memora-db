@@ -35,7 +35,6 @@ public class MemoraNode {
 
     private final BucketManager bucketManager;
     private final ThreadPoolService threadPoolService;
-    private final List<NodeBase> myReplicas;
     private final Provider<ClusterOrchestrator> clusterOrchestratorProvider;
     private final Provider<ReplicationManager> replicationManagerProvider;
 
@@ -45,7 +44,6 @@ public class MemoraNode {
     @Inject
     public MemoraNode(
             final NodeInfo nodeInfo,
-            final List<NodeBase> myReplicas,
             final ThreadPoolService threadPoolService,
             final BucketManager bucketManager,
             final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
@@ -56,7 +54,6 @@ public class MemoraNode {
         this.threadPoolService = threadPoolService;
         this.clusterOrchestratorProvider = clusterOrchestratorProvider;
         this.replicationManagerProvider = replicationManagerProvider;
-        this.myReplicas = myReplicas;
 
         log.info("Node initialized with ID: {}, Host: {}, Port: {}", info.getNodeId(), info.getHost(), info.getPort());
     }
@@ -107,17 +104,8 @@ public class MemoraNode {
         return getClusterOrchestrator().forwardToNode(request, nodeId);
     }
 
-    public void handleAddNodes(List<NodeBase> nodes, boolean addPrimary) {
-        try {
-            getClusterOrchestrator().handleAddNodes(nodes, addPrimary, bucketManager.getSelfBucketIds());
-        } catch (MemoraException e) {
-            ClusterInfo.setState(ClusterState.ACTIVE);
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to add nodes: {}", e.getMessage());
-            ClusterInfo.setState(ClusterState.ACTIVE);
-            throw new RuntimeException("Partial scaling occured, releasing lock.");
-        }
+    public void addNodes(List<NodeBase> nodes, boolean addPrimary) {
+            getClusterOrchestrator().handleAddNodes(nodes, addPrimary);
     }
 
     public List<String> getSelfKeys() {
@@ -187,6 +175,10 @@ public class MemoraNode {
             handleMutation();
             bucketManager.clear();
         }
+    }
+
+    public void forget(String nodeId) {
+        getClusterOrchestrator().forgetNode(nodeId);
     }
 
     public void buildCluster() {

@@ -25,5 +25,21 @@
             "hostName": "localhost",
             "projectName": "memora-db"
         },
+        {
+            "type": "java",
+            "name": "MemoraDB-node-4",
+            "request": "attach",
+            "port": 5008,
+            "hostName": "localhost",
+            "projectName": "memora-db"
+        },
+        {
+            "type": "java",
+            "name": "MemoraDB-node-5",
+            "request": "attach",
+            "port": 5009,
+            "hostName": "localhost",
+            "projectName": "memora-db"
+        },
     ]
 }

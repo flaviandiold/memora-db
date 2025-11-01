@@ -80,7 +80,7 @@ public class ThreadPoolService {
         }
 
         scheduler.scheduleAtFixedRate(() ->
-            threadPool.submit(task), recurringSeconds, recurringSeconds, TimeUnit.SECONDS);
+            threadPool.submit(task), recurringSeconds >> 1, recurringSeconds, TimeUnit.SECONDS);
     }
 
     public ExecutorService getThreadPool(ThreadPool pool) {

@@ -131,6 +131,10 @@ public class ReplicationManager {
             });
     }
 
+    public List<String> getSelfBucketIds() {
+        return bucketManager.getSelfBucketIds();
+    }
+
 
     public void initiateReplicationOf(NodeInfo primary) throws InterruptedException, IOException {
         MemoraClient client = clientManager.getOrCreate(primary);
@@ -164,7 +168,7 @@ public class ReplicationManager {
         inSyncReplicas.clear();
     }
 
-    public int getReplicationFactor() {
+    public int getDesiredReplicaCount() {
         return replicationFactor;
     }
 }

@@ -10,6 +10,7 @@ import com.memora.messages.RpcRequest;
 import com.memora.messages.RpcResponse;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand;
+import com.memora.messages.ClusterCommand.ClusterNodeCommand.LockCommand;
 import com.memora.messages.ClusterCommand.ClusterNodeCommand.AddNodesCommand.Modifier;
 import com.memora.model.ClusterInfo;
 import com.memora.model.NodeBase;
@@ -25,38 +26,29 @@ public class ClusterExecutor extends Executor {
     public synchronized RpcResponse execute(RpcRequest request) {
         final ClusterCommand command = request.getClusterCommand();
 
-        if (!MemoraNode.getInfo().isStandAlone()) {
-            String clusterLeader = node.getClusterLeader();
-            if (!MemoraNode.getInfo().getNodeId().equals(clusterLeader)) {
-                return node
-                        .forwardToNode(request, clusterLeader)
-                        .setCorrelationId(request.getCorrelationId())
-                        .build();
-            }
-        } else {
-            node.behave(NodeType.PRIMARY, false);
-        }
-
         return switch (command.getCommandCase()) {
             case NODE_COMMAND -> {
                 final ClusterNodeCommand nodeCommand = command.getNodeCommand();
                 yield switch (nodeCommand.getCommandCase()) {
                     case ADD_COMMAND -> {
+                        if (!MemoraNode.getInfo().isStandAlone()) {
+                            String clusterLeader = node.getClusterLeader();
+                            if (!MemoraNode.getInfo().getNodeId().equals(clusterLeader)) {
+                                yield node
+                                    .forwardToNode(request, clusterLeader)
+                                    .setCorrelationId(request.getCorrelationId())
+                                    .build();
+                            }
+                        } else {
+                            node.behave(NodeType.PRIMARY, false);
+                        }
+
                         final AddNodesCommand addNodesCommand = nodeCommand.getAddCommand();
                         boolean addPrimary = addNodesCommand.getModifier().equals(Modifier.PRIMARY);
-                        if (addPrimary) {
-                            if (
-                                ClusterInfo.getState().equals(ClusterState.REDISTRIBUTION_LOCKED) ||
-                                ClusterInfo.getState().equals(ClusterState.REDISTRIBUTING)
-                            ) {
-                                yield ERROR(request, "Cluster is already in redistribution state");
-                            }
-                            ClusterInfo.setState(ClusterState.REDISTRIBUTION_LOCKED);
-                        }
                         List<NodeBase> nodes = addNodesCommand.getNodesList().stream()
-                            .map(NodeBase::create)
-                            .toList();
-                        node.handleAddNodes(nodes, addPrimary);
+                                .map(NodeBase::create)
+                                .toList();
+                        node.addNodes(nodes, addPrimary);
                         yield OK(request);
                     }
                     case JOIN_COMMAND -> {
@@ -64,7 +56,24 @@ public class ClusterExecutor extends Executor {
                         node.join(newNode);
                         yield OK(request);
                     }
+                    case FORGET_COMMAND -> {
+                        final List<String> nodeIds = nodeCommand.getForgetCommand().getNodesList();
+                        nodeIds.forEach(node::forget);
+                        yield OK(request);
+                    }
                     case REMOVE_COMMAND -> {
+                        yield OK(request);
+                    }
+                    case LOCK_COMMAND -> {
+                        final LockCommand lockCommand = nodeCommand.getLockCommand();
+                        if (lockCommand.getLock()) {
+                            if (!ClusterInfo.getState().equals(ClusterState.REDISTRIBUTION_LOCKED)
+                                    || !ClusterInfo.getState().equals(ClusterState.REDISTRIBUTING)) {
+                                ClusterInfo.setState(ClusterState.REDISTRIBUTION_LOCKED);
+                            }
+                        } else {
+                            ClusterInfo.setState(ClusterState.ACTIVE);
+                        }
                         yield OK(request);
                     }
                     default -> UNSUPPORTED_OPERATION(request);
@@ -73,5 +82,5 @@ public class ClusterExecutor extends Executor {
             default -> UNSUPPORTED_OPERATION(request);
         };
     }
-    
+
 }

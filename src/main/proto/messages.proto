@@ -51,7 +51,6 @@ message NodeCommand {
   // Command to instruct a node to become a primary.
   message PrimarizeCommand {
       repeated NodeAddress replicas = 1;
-      bool promote = 2;
   }
 
   // Command to instruct a node to become a replica of another.
@@ -105,8 +104,9 @@ message InfoCommand {
       TYPE = 4;
       PRIMARIES = 5;
       REPLICAS = 6;
-      MAX_QPS = 7;
-      CURRENT_QPS = 8;
+      REPLICAS_COUNT = 7;
+      MAX_QPS = 8;
+      CURRENT_QPS = 9;
     }
 
     DataType type = 1;
@@ -152,17 +152,27 @@ message ClusterCommand {
         }
 
         message RemoveNodesCommand {
-          repeated NodeAddress nodes = 1;
+          repeated string nodes = 1;
         }
 
         message JoinNodeCommand {
           NodeAddress node = 1;
         }
 
+        message ForgetCommand {
+          repeated string nodes = 1;
+        }
+
+        message LockCommand {
+          bool lock = 1;
+        }
+
         oneof command {
           AddNodesCommand add_command = 1;
           RemoveNodesCommand remove_command = 2;
           JoinNodeCommand join_command = 3;
+          ForgetCommand forget_command = 4;
+          LockCommand lock_command = 5;
         }
     }
 

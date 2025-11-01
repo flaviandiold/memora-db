@@ -39,6 +39,10 @@ public class InfoExecutor extends Executor {
                         if (!MemoraNode.getInfo().isPrimary()) UNSUPPORTED_OPERATION(request, "NOT A PRIMARY");
                         yield OK(request, String.valueOf(node.getClusterMap().getPrimaries().size()));
                     }
+                    case REPLICAS_COUNT -> {
+                        if (!MemoraNode.getInfo().isPrimary()) UNSUPPORTED_OPERATION(request, "NOT A PRIMARY");
+                        yield OK(request, String.valueOf(node.getClusterMap().getReplicaIds(MemoraNode.getInfo().getNodeId()).size()));
+                    }
                     case ALL -> OK(request, Parser.toJson(MemoraNode.getInfo()));
                     case MAX_QPS -> OK(request, String.valueOf(MemoraNode.getInfo().getMaxQps()));
                     case CURRENT_QPS -> OK(request, String.valueOf(MemoraNode.getInfo().getCurrentQps()));

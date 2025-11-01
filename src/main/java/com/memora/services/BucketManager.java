@@ -25,6 +25,7 @@ public class BucketManager {
 
     private final BucketMap bucketMap; // Contains data of buckets of all nodes
     private final Map<String, Bucket> buckets; // Contains buckets of current node
+    private final int numberOfBuckets;
 
     private final String nodeId;
 
@@ -35,6 +36,7 @@ public class BucketManager {
         this.nodeId = nodeId;
         this.bucketMap = new BucketMap();
         this.buckets = new ConcurrentHashMap<>();
+        this.numberOfBuckets = numberOfBuckets;
         addNewBuckets(numberOfBuckets);
     }
 
@@ -191,6 +193,7 @@ public class BucketManager {
 
     public void clear() {
         buckets.values().forEach(Bucket::clear);
-        bucketMap.retainBucketsOf(nodeId);
+        bucketMap.clearAll();
+        addNewBuckets(numberOfBuckets);
     }
 }

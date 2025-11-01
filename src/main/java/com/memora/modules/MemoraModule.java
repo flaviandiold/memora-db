@@ -39,19 +39,19 @@ public class MemoraModule extends AbstractModule {
         final NodeInfo nodeInfo,
         final BucketManager bucketManager,
         final ThreadPoolService threadPoolService,
-        final @Named(Constants.MY_REPLICAS) List<NodeBase> myReplicas,
         final Provider<ClusterOrchestrator> clusterOrchestratorProvider,
         final Provider<ReplicationManager> replicationManagerProvider
     ) {
-        return new MemoraNode(nodeInfo, myReplicas, threadPoolService, bucketManager, clusterOrchestratorProvider, replicationManagerProvider);
+        return new MemoraNode(nodeInfo, threadPoolService, bucketManager, clusterOrchestratorProvider, replicationManagerProvider);
     }
 
     @Provides
     @Singleton
     public MemoraServerChannel provideMemoraChannel(
-        final CommandExecutor executor
+        final CommandExecutor executor,
+        final ThreadPoolService threadPoolService
     ){
-        return new MemoraServerChannel(executor);
+        return new MemoraServerChannel(executor, threadPoolService);
     }
 
     @Provides
