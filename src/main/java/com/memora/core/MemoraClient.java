@@ -137,6 +137,10 @@ public class MemoraClient implements Closeable {
         return call("INFO NODE REPLICAS");
     }
 
+    public CompletableFuture<RpcResponse> getBucketMap() {
+        return call("INFO BUCKET MAP");
+    }
+
     public CompletableFuture<RpcResponse> getBucketIds() {
         return call("INFO BUCKET IDS");
     }
@@ -181,20 +185,28 @@ public class MemoraClient implements Closeable {
         return call("CLUSTER NODE UNLOCK");
     }
 
+    public CompletableFuture<Boolean> forgetWithoutFailure(String nodeId) {
+        return isSuccessAsync(String.format("CLUSTER NODE FORGET %s", nodeId));
+    }
+
     public CompletableFuture<RpcResponse> forget(String nodeId) {
         return call("CLUSTER NODE FORGET %s", nodeId);
+    }
+
+    public CompletableFuture<RpcResponse> forget(String nodeId, boolean isHard) {
+        return call("CLUSTER NODE FORGET %s %s", nodeId, isHard ? "HARD" : "SOFT");
     }
 
     public CompletableFuture<RpcResponse> forget(List<String> nodeIds) {
         return call("CLUSTER NODE FORGET %s", String.join(" ", nodeIds));
     }
 
-    public boolean put(String key, String value, long ttl) {
+    public CompletableFuture<Boolean> put(String key, String value, long ttl) {
         String request = String.format("PUT %s '%s' EXAT %d", key, value, ttl);
-        return isSuccess(request);
+        return isSuccessAsync(request);
     }
 
-    public boolean put(String key, String value) {
+    public CompletableFuture<Boolean> put(String key, String value) {
         return put(key, value, -1);
     }
 
@@ -312,29 +324,35 @@ public class MemoraClient implements Closeable {
 
     /**
      * A helper method that attempts to send a request and retries on failure.
+     * This is fully non-blocking.
      *
      * @param request      The command string to send.
      * @param retriesLeft  The number of retries remaining.
-     * @param pool         The thread pool to execute on.
+     * @param pool         The thread pool to execute the retry logic on.
      * @return A CompletableFuture that completes with the success status.
      */
     private CompletableFuture<Boolean> attemptWithRetries(String request, int retriesLeft, ExecutorService pool) {
-        // Run the network call asynchronously on the thread pool
-        CompletableFuture<Boolean> attempt = CompletableFuture.supplyAsync(() -> isSuccess(request), pool);
+        // 1. Call the async method. It returns a future immediately.
+        return isSuccessAsync(request)
+            .thenComposeAsync(success -> { // 2. When the future completes, run this logic
+                
+                if (success) {
+                    // If successful, we are done.
+                    return CompletableFuture.completedFuture(true);
+                }
+                
+                if (retriesLeft > 0) {
+                    // If failed, recursively call this method again.
+                    // This is non-blocking recursion.
+                    log.info("Request failed, retrying... ({} retries left)", retriesLeft);
+                    return attemptWithRetries(request, retriesLeft - 1, pool);
+                }
+                
+                // If failed and no retries are left, return final failure.
+                log.error("Request failed after all retries: {}", request);
+                return CompletableFuture.completedFuture(false);
 
-        return attempt.thenComposeAsync(success -> {
-            if (success) {
-                // If successful, we are done.
-                return CompletableFuture.completedFuture(true);
-            }
-            if (retriesLeft > 0) {
-                // If failed and we have retries left, try again.
-                log.info("Request failed, retrying... (" + retriesLeft + " retries left)");
-                return attemptWithRetries(request, retriesLeft - 1, pool);
-            }
-            // If failed and no retries are left, return final failure.
-            return CompletableFuture.completedFuture(false);
-        }, pool);
+            }, pool); // 3. IMPORTANT: Run this composition logic on your worker pool
     }
 
     public CompletableFuture<RpcResponse> get(String key) {
@@ -345,9 +363,9 @@ public class MemoraClient implements Closeable {
         return call("GET %s", String.join(" ", keys));
     }
 
-    public boolean delete(String key) {
+    public CompletableFuture<Boolean> delete(String key) {
         String request = String.format("DELETE %s", key);
-        return isSuccess(request);
+        return isSuccessAsync(request);
     }
 
     private boolean isSuccess(String request) {
@@ -359,6 +377,19 @@ public class MemoraClient implements Closeable {
             return false;
         }
         return RpcStatus.OK.equals(response.getStatus());
+    }
+
+    /**
+     * Asynchronously checks if a request was successful.
+     * This method is non-blocking.
+     *
+     * @param request The command string to send.
+     * @return A CompletableFuture that will complete with 'true' if the
+     * response status is OK, and 'false' otherwise.
+     */
+    private CompletableFuture<Boolean> isSuccessAsync(String request) {
+        return callWithoutError(request)
+            .thenApply(response -> RpcStatus.OK.equals(response.getStatus()));
     }
 
 

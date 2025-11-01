@@ -5,27 +5,26 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
-import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
-import com.memora.core.MemoraNode;
 import com.memora.enums.ThreadPool;
-import com.memora.model.BucketInfo;
+import com.memora.messages.RpcResponse;
 import com.memora.model.CacheEntry;
 import com.memora.model.ClusterMap;
 import com.memora.model.NodeInfo;
 import com.memora.store.Bucket;
-import com.memora.utils.Parser;
 
 import lombok.extern.slf4j.Slf4j;
+
+import static com.memora.utils.CommonUtils.resolveFutures;
+import static com.memora.core.MemoraNode.getNodeId;;
 
 @Slf4j
 public class ReplicationManager {
 
-    private final NodeInfo currentNode;
-    private final BucketManager bucketManager;
     private final ThreadPoolService threadPoolService;
     private final ClientManager clientManager;
     private final ClusterMap clusterMap;
@@ -35,10 +34,8 @@ public class ReplicationManager {
     private final ThreadPool pool = ThreadPool.REPLICATION_THREAD_POOL;
 
     @Inject
-    public ReplicationManager(BucketManager bucketManager, ClientManager clientManager,
+    public ReplicationManager(ClientManager clientManager,
         ThreadPoolService threadPoolService, ClusterMap clusterMap, int replicationFactor) {
-        this.currentNode = MemoraNode.getInfo();
-        this.bucketManager = bucketManager;
         this.clientManager = clientManager;
         this.threadPoolService = threadPoolService;
         this.clusterMap = clusterMap;
@@ -48,44 +45,42 @@ public class ReplicationManager {
 
 
     public void put(CacheEntry entry) {
-        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        List<NodeInfo> replicas = clusterMap.getReplicas(getNodeId());
         executeAsync(replicas, replica -> {
             try {
                 return clientManager.getOrCreate(replica)
                         .put(entry.getKey(), entry.getValue(), entry.getTtl());
             } catch (Exception e) {
-                return false;
+                return CompletableFuture.completedFuture(false);
             }
         });
     }
 
     public void putAll(Collection<CacheEntry> entries) {
-        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        List<NodeInfo> replicas = clusterMap.getReplicas(getNodeId());
         executeAsync(replicas, replica -> {
             try {
-                return clientManager.getOrCreate(replica).put(entries, threadPoolService.getThreadPool(pool));
+                return clientManager.getOrCreate(replica).putAsync(entries, threadPoolService.getThreadPool(pool));
             } catch (Exception e) {
-                return false;
+                return CompletableFuture.completedFuture(false);
             }
         });
     }
 
     public void delete(String key) {
-        List<NodeInfo> replicas = clusterMap.getReplicas(currentNode.getNodeId());
+        List<NodeInfo> replicas = clusterMap.getReplicas(getNodeId());
         executeAsync(replicas, replica -> {
             try {
                 return clientManager.getOrCreate(replica).delete(key);
             } catch (Exception e) {
-                return false;
+                return CompletableFuture.completedFuture(false);
             }
         });
     }
 
-    public void replicateDataTo(NodeInfo replica) throws IOException, InterruptedException {
+    public void replicateDataTo(NodeInfo replica, List<Bucket> buckets) throws IOException, InterruptedException {
         // This call can throw an exception, so it's handled synchronously before the async part.
         final MemoraClient client = clientManager.getOrCreate(replica);
-
-        List<Bucket> buckets = bucketManager.getSelfBuckets();
 
         executeAsync(buckets, bucket -> {
             log.info("Replicating bucket {}", bucket.getId());
@@ -93,58 +88,45 @@ public class ReplicationManager {
         }).exceptionally(ex -> {
             log.error("Replication failed with an exception. {}", ex);
             throw new RuntimeException(ex.getMessage());
-        }).join();
+        });
     }
 
-    private <T> CompletableFuture<Boolean> executeAsync(List<T> data, Function<T, Boolean> task) {
+    /**
+     * Executes a list of NON-BLOCKING tasks in parallel.
+     *
+     * @param data The list of items to process.
+     * @param task A function that takes an item and returns a CompletableFuture<Boolean>.
+     * @return A single CompletableFuture that completes with 'true' only if all
+     * tasks completed successfully.
+     */
+    private <T> CompletableFuture<Boolean> executeAsync(List<T> data, Function<T, CompletableFuture<Boolean>> task) {
         if (data == null || data.isEmpty()) {
-            log.warn("No data provided for replication operation '{}', completing as success.");
+            log.warn("No data provided for async execution, completing as success.");
             return CompletableFuture.completedFuture(true);
         }
 
+        // Map each item to its asynchronous task
         List<CompletableFuture<Boolean>> futures = data.stream()
-            .map(item -> CompletableFuture.supplyAsync(
-                () -> task.apply(item),
-                threadPoolService.getThreadPool(pool)
-            ))
+            .map(item -> task.apply(item))
             .toList();
 
+        // Return a future that completes when all tasks are done
         return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-            .thenApply(v -> { // Use thenApply to return the final boolean result
-                boolean allSucceeded = futures.stream()
-                    .allMatch(future -> {
-                        if (future.isCompletedExceptionally()) return false;
-                        return future.join();
-                    });
+            .handle((v, ex) -> { // Use .handle to process both success and failure
+                if (ex != null) {
+                    log.error("Replication failed with an exception.", ex);
+                    return false; // Hard failure (exception)
+                }
 
+                // Check for soft failures (tasks that returned false)
+                boolean allSucceeded = futures.stream().allMatch(CompletableFuture::join);
                 if (allSucceeded) {
-                    log.info("Replication succeeded for all targets.");
-                    // Potential logic: update in-sync replica state here
+                    log.info("Async execution succeeded for all targets.");
                 } else {
-                    log.error("Replication failed for one or more targets.");
+                    log.error("Async execution failed for one or more targets.");
                 }
                 return allSucceeded;
-            })
-            .exceptionally(ex -> {
-                log.error("Replication failed with an exception.", ex);
-                return false; // The operation failed
             });
-    }
-
-    public List<String> getSelfBucketIds() {
-        return bucketManager.getSelfBucketIds();
-    }
-
-
-    public void initiateReplicationOf(NodeInfo primary) throws InterruptedException, IOException {
-        MemoraClient client = clientManager.getOrCreate(primary);
-
-        client.call("INFO BUCKET MAP").thenAcceptAsync(response -> {
-            List<BucketInfo> bucketInfo = Parser.fromJson(response.getResponse(), new TypeToken<List<BucketInfo>>() {
-            }.getType());
-            bucketManager.createFromPrimary(bucketInfo);
-            client.primarize(currentNode.getHost(), currentNode.getPort()).join();
-        }).join();
     }
 
     public void replicateClusterMap(ClusterMap clusterMap) {
