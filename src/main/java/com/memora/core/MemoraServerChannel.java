@@ -13,27 +13,40 @@ import io.netty.handler.codec.protobuf.ProtobufDecoder;
 import io.netty.handler.codec.protobuf.ProtobufEncoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MemoraServerChannel extends ChannelInitializer<Channel> {
 
     private final CommandExecutor commandExecutor;
+    // Create a separate thread pool for business logic to avoid blocking the Netty event loop.
+    private final EventExecutorGroup businessLogicExecutor = new DefaultEventExecutorGroup(16);
 
     public MemoraServerChannel(
             CommandExecutor commandExecutor
     ) {
         this.commandExecutor = commandExecutor;
     }
-
+    
     private class MemoraRequestHandler extends SimpleChannelInboundHandler<RpcRequest> {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RpcRequest request) throws Exception {
             log.info("Received request correlation id: {}", request.getCorrelationId());
-            RpcResponse response = commandExecutor.execute(request);
-            log.info("Sending response: {}", response);
-            ctx.writeAndFlush(response);
+            // The command execution is now offloaded from the I/O thread.
+            // The response will be written back to the channel from the business logic thread.
+            businessLogicExecutor.submit(() -> {
+                try {
+                    RpcResponse response = commandExecutor.execute(request);
+                    log.info("Sending response: {}", response);
+                    ctx.writeAndFlush(response);
+                } catch (Exception e) {
+                    log.error("Error executing command for request {}", request.getCorrelationId(), e);
+                    // Optionally, write an error response back to the client
+                }
+            });
         }
 
     }
@@ -57,7 +70,7 @@ public class MemoraServerChannel extends ChannelInitializer<Channel> {
 
         // === YOUR BUSINESS LOGIC ===
         // This handler now correctly receives the RpcRequest object.
-        pipeline.addLast(new MemoraRequestHandler());
+        pipeline.addLast(businessLogicExecutor, new MemoraRequestHandler());
     }
 
 }
