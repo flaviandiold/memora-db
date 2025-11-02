@@ -35,6 +35,7 @@
         <guice.version>5.1.0</guice.version>
         <commons.codec.version>1.16.0</commons.codec.version>
         <commons.lang3.version>3.13.0</commons.lang3.version>
+        <jline.version>3.26.1</jline.version>
     </properties>
 
     <dependencies>
@@ -93,6 +94,11 @@
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
             <version>${protobuf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline</artifactId>
+            <version>${jline.version}</version> 
         </dependency>
     </dependencies>
 

@@ -1,8 +1,6 @@
 package com.memora.cli;
 
 import java.io.IOException;
-import java.util.NoSuchElementException;
-import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -15,6 +13,14 @@ import com.memora.model.NodeBase;
 import com.memora.modules.CoreServiceModule;
 import com.memora.modules.EnvironmentModule;
 import com.memora.services.ClientManager;
+
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
+import org.jline.reader.impl.history.DefaultHistory;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
 
 import static com.google.inject.Guice.createInjector;
 
@@ -60,43 +66,77 @@ public class MemoraCLI {
         cli.inject();
         cli.createClient(host, port);
         if (args.length > 2 && "concurrencyTest".equalsIgnoreCase(args[2])) {
-            cli.runConcurrencyTest(host, port);
+            cli.runConcurrencyTest();
         } else {
-            cli.initialize(host, port);
+            cli.initialize();
         }
 
     }
 
-    private void initialize(String host, int port) throws IOException {
+    private void initialize() throws IOException {
         System.out.println("Welcome to Memora CLI!");
-        System.out.println("Type 'exit' to quit.");
+        System.out.println("Type 'exit' to quit (or press Ctrl+D).");
 
-        try (Scanner scanner = new Scanner(System.in);) {
-            while (true) {
-                try {
-                    System.out.print("> ");
-                    String input = scanner.nextLine().trim();
-                    if ("exit".equalsIgnoreCase(input)) {
-                        break;
-                    }
-                    RpcResponse result = client.call(input).get();
-                    System.out.println(result);
-                
-                } catch (NoSuchElementException e) {
-                    // Catch the specific exception for Ctrl+D
-                    // Treat Ctrl+D as a clean exit
-                    break;
-                } catch (Exception e) {
-                    // Catch all other exceptions and continue
-                    System.err.println("Error: " + e.getMessage());
+        // 1. Create the terminal
+        Terminal terminal = TerminalBuilder.builder()
+                .system(true)
+                .build();
+
+        // 2. Create the LineReader with history
+        LineReader lineReader = LineReaderBuilder.builder()
+                .terminal(terminal)
+                .history(new DefaultHistory())
+                .build();
+
+        String prompt = "> ";
+        
+        while (true) {
+            String line = "";
+            try {
+                line = lineReader.readLine(prompt);
+            } catch (UserInterruptException e) {
+                // Handle Ctrl+C (as a user interrupt, not an error)
+                if (e.getPartialLine() == null || e.getPartialLine().isEmpty()) {
+                    // Line was empty, so exit the program
+                    // We print a newline to move off the prompt line cleanly
+                    break; // Break the loop to exit
+                } else {
+                    // Line was NOT empty, so just cancel the current input
+                    // and continue to the next loop iteration (re-prompt)
+                    continue;
                 }
+            } catch (EndOfFileException e) {
+                // Handle Ctrl+D (as a clean exit)
+                break;
+            }
+
+            line = line.trim();
+
+            if ("exit".equalsIgnoreCase(line)) {
+                break;
+            }
+
+            if (line.isEmpty()) {
+                continue; // Don't send empty commands
+            }
+
+            try {
+                // This is your original logic for handling commands
+                RpcResponse result = client.call(line).get();
+                System.out.println(result);
+            } catch (Exception e) {
+                // Catch all other exceptions and continue
+                System.err.println("Error: " + e.getMessage());
             }
         }
+        
+        // 4. Clean up
+        terminal.close();
         System.out.println("Exiting Memora CLI. Goodbye!");
         System.exit(0);
     }
 
-    private void runConcurrencyTest(String host, int port) {
+    private void runConcurrencyTest() {
         System.out.println("Starting concurrency test with multiple threads...");
         int numThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
