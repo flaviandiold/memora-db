@@ -13,6 +13,10 @@ public final class ResponseFactory {
     // Private constructor to prevent instantiation
     private ResponseFactory() {}
 
+    public static RpcResponse TIMEOUT() {
+        return withStatus(RpcStatus.ERROR).setResponse("Request timed out.").build();
+    }
+
     private static RpcResponse.Builder withStatus(RpcStatus status) {
         return RpcResponse.newBuilder().setStatus(status);
     }

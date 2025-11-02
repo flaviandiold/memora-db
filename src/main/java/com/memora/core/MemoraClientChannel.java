@@ -1,5 +1,6 @@
 package com.memora.core;
 
+import com.google.inject.Inject;
 import com.memora.messages.RpcResponse;
 import com.memora.services.ClientManager;
 
@@ -12,13 +13,14 @@ import io.netty.handler.codec.protobuf.ProtobufDecoder;
 import io.netty.handler.codec.protobuf.ProtobufEncoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@RequiredArgsConstructor(onConstructor = @__({@Inject}))
 public class MemoraClientChannel extends ChannelInitializer<Channel> {
 
-    public MemoraClientChannel() {
-    }
+    private final ClientManager clientManager;
 
     private class ClientResponseHandler extends SimpleChannelInboundHandler<RpcResponse> {
 
@@ -36,7 +38,7 @@ public class MemoraClientChannel extends ChannelInitializer<Channel> {
             }
             
             // 2. Find the corresponding future from the map and remove it
-            ClientManager.resolve(correlationId, response);
+            clientManager.resolveRequest(correlationId, response);
         }
     }
 

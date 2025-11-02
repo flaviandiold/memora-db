@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
@@ -62,6 +63,10 @@ public class ThreadPoolService {
             throw new IllegalStateException("Thread pool not found: " + pool.name());
         }
         threadPool.submit(task);
+    }
+
+    public <T> ScheduledFuture<T> submitAfter(ThreadPool pool, Callable<T> task, long delaySeconds) {
+        return scheduler.schedule(() -> submit(pool, task).get(), delaySeconds, TimeUnit.SECONDS);
     }
 
     public void submitAfter(ThreadPool pool, Runnable task, long delaySeconds) {

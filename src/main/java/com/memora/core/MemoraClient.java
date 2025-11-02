@@ -42,6 +42,7 @@ public class MemoraClient implements Closeable {
     private final Channel channel;
     private final NodeBase base;
     private final ClusterMap clusterMap;
+    private final ClientManager clientManager;
     
     private final ReentrantLock lock = new ReentrantLock();
     private final int PUT_BATCH_SIZE = 50;
@@ -49,10 +50,12 @@ public class MemoraClient implements Closeable {
     
     private boolean closed = false;
 
-    public MemoraClient(Channel channel, NodeBase base, ClusterMap clusterMap) throws IOException {
+    public MemoraClient(Channel channel, NodeBase base, ClusterMap clusterMap, ClientManager clientManager) throws IOException {
         this.channel = channel;
         this.base = base;
         this.clusterMap = clusterMap;
+        this.clientManager = clientManager;
+
         if (new InetSocketAddress(base.getHost(), base.getPort()).isUnresolved()) {
             throw new IOException("Unable to resolve host: " + base.getHost());
         }
@@ -74,7 +77,7 @@ public class MemoraClient implements Closeable {
             throw new MemoraException("Request must have a correlation ID.");
         }
 
-        ClientManager.addRequest(request.getCorrelationId(), future);
+        clientManager.addRequest(request.getCorrelationId(), future);
         
         // 3. Send the request
         // log.info("Sending request: {} to {}", request, this.base);
