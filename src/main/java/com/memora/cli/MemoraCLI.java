@@ -1,6 +1,9 @@
 package com.memora.cli;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -141,17 +144,34 @@ public class MemoraCLI {
         int numThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
+        // Use a thread-safe list for latencies
+        List<Long> latencies = new ArrayList<>(); // Collections.synchronizedList(new ArrayList<>());
+        List<CompletableFuture<Void>> allFutures = new ArrayList<>();
+
         for (int i = 0; i < numThreads; i++) {
             final int threadNum = i;
-            executor.submit(() -> {
+            CompletableFuture<Void> threadFuture = CompletableFuture.runAsync(() -> {
+                List<CompletableFuture<Void>> requestFutures = new ArrayList<>();
                 System.out.println("Thread " + threadNum + " started.");
-                // Each thread makes a few calls
                 for (int j = 0; j < 10000; j++) {
                     String key = "key-" + threadNum + "-" + j;
                     String value = "value-" + threadNum + "-" + j;
-                    client.put(key, value);
+                    long startTime = System.currentTimeMillis();
+                    // Fire and forget, handle result in the callback
+                    CompletableFuture<Void> responseFuture = client.put(key, value).thenRun(() -> {
+                        long endTime = System.currentTimeMillis();
+                        long latency = endTime - startTime;
+                        synchronized (latencies) {
+                            latencies.add(latency);
+                        }
+                    });
+                    requestFutures.add(responseFuture);
                 }
-            });
+                // This thread must wait for all its 10,000 requests to complete.
+                CompletableFuture.allOf(requestFutures.toArray(CompletableFuture[]::new)).join();
+
+            }, executor);
+            allFutures.add(threadFuture);
         }
 
         executor.shutdown();
@@ -166,6 +186,34 @@ public class MemoraCLI {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+
+        // Wait for all the CompletableFutures to finish their work
+        try {
+            CompletableFuture.allOf(allFutures.toArray(CompletableFuture[]::new)).get();
+        } catch (Exception e) {
+            System.err.println("Test did not complete within the timeout.");
+            e.printStackTrace();
+        }
+
         System.out.println("Concurrency test finished.");
+        System.out.println("Latency Report");
+        long totalLatency = 0;
+        long maxLatency = 0;
+        long minLatency = Long.MAX_VALUE;
+        for (long latency : latencies) {
+            totalLatency += latency;
+            if (latency > maxLatency) {
+                maxLatency = latency;
+            }
+            if (latency < minLatency) {
+                minLatency = latency;
+            }
+        }
+        double averageLatency = (double) totalLatency / latencies.size();
+        System.out.println("Total Calls: " + latencies.size());
+        System.out.println("Average Latency: " + averageLatency + "ms");
+        System.out.println("Max Latency: " + maxLatency + "ms");
+        System.out.println("Min Latency: " + minLatency + "ms");
+
     }
 }

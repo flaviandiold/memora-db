@@ -221,3 +221,26 @@ Retrieves information about the entire cluster.
 
 **Example:**
 `INFO CLUSTER MAP`
+
+
+## Performance
+
+### Max QPS
+- A single node was put under a load of 10,000 QPS by 10 threads parallely.
+- The node was able to handle upto the given numbers per second.
+
+```bash
+  status: OK
+  response: "43640"
+  correlation_id: "95d6ee12-d4b0-4214-8b75-bd74a73106ed"
+```
+
+### Latency Report
+- The latency report for the above load testing
+
+```
+  Total Calls: 100000
+  Average Latency: 1945.1442ms
+  Max Latency: 2683ms
+  Min Latency: 36ms
+```
