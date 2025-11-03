@@ -36,14 +36,17 @@ public class Bucket implements Iterable<CacheEntry> {
     }
 
     public void put(final CacheEntry entry) {
-        if (entry.getTtl() != -1 && System.currentTimeMillis() > entry.getTtl()) {
-            return;
-        }
+        if (entry.isExpired()) return;
 
-        store.compute(entry.getKey(), (k, v) -> {
-            insertionOrder.put(entry.getKey());
-            return entry;
-        });
+        try {
+            store.compute(entry.getKey(), (k, v) -> {
+                insertionOrder.put(entry.getKey());
+                return entry;
+            });
+        } catch (OutOfMemoryError oMemoryError) {
+            this.evict();
+            put(entry);
+        }
     }
 
     public void putAll(final List<CacheEntry> entries) {
@@ -52,7 +55,7 @@ public class Bucket implements Iterable<CacheEntry> {
 
     public CacheEntry get(String key) {
         return store.compute(key, (k, v) -> {
-            if (v != null && v.getTtl() != -1 && System.currentTimeMillis() > v.getTtl()) {
+            if (v != null && v.isExpired()) {
                 // Lazy eviction for expired keys
                 insertionOrder.remove(key);
                 return null;
@@ -92,6 +95,7 @@ public class Bucket implements Iterable<CacheEntry> {
         String keyToEvict = insertionOrder.getMostRecentKey();
         if (keyToEvict != null) {
             store.remove(keyToEvict);
+            insertionOrder.remove(keyToEvict);
         }
     }
 }

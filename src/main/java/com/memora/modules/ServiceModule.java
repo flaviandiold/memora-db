@@ -35,9 +35,10 @@ public class ServiceModule extends AbstractModule {
             @Named(Constants.NUMBER_OF_BUCKETS) int numberOfBuckets,
             final ReplicationManager replicationManager,
             final ClientManager clientManager,
-            final ClusterMap clusterMap
+            final ClusterMap clusterMap,
+            final ThreadPoolService threadPoolService
     ) {
-        return new BucketManager(nodeId, numberOfBuckets, replicationManager, clientManager, clusterMap);
+        return new BucketManager(nodeId, numberOfBuckets, replicationManager, clientManager, threadPoolService, clusterMap);
     }
 
     @Provides

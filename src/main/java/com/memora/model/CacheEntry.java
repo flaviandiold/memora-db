@@ -16,4 +16,8 @@ public class CacheEntry {
     @NonNull private final String key;
     @NonNull private final String value;
     private final long ttl;
+
+    public boolean isExpired() {
+        return this.getTtl() != -1 && System.currentTimeMillis() > this.getTtl();
+    }
 }

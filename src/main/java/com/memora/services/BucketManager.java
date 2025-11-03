@@ -14,6 +14,7 @@ import java.util.stream.StreamSupport;
 import com.google.inject.Inject;
 import com.memora.core.MemoraClient;
 import com.memora.core.MemoraNode;
+import com.memora.enums.ThreadPool;
 import com.memora.model.BucketInfo;
 import com.memora.model.BucketMap;
 import com.memora.model.CacheEntry;
@@ -29,6 +30,7 @@ public class BucketManager {
     private final int numberOfBuckets;
     private final ClientManager clientManager;
     private final ReplicationManager replicationManager;
+    private final ThreadPoolService threadPoolService;
     private final ClusterMap clusterMap;
 
     private final String nodeId;
@@ -39,6 +41,7 @@ public class BucketManager {
         int numberOfBuckets,
         ReplicationManager replicationManager,
         ClientManager clientManager,
+        ThreadPoolService threadPoolService,
         ClusterMap clusterMap
     ) {
         this.nodeId = nodeId;
@@ -48,6 +51,8 @@ public class BucketManager {
         this.clientManager = clientManager;
         this.clusterMap = clusterMap;
         this.numberOfBuckets = numberOfBuckets;
+        this.threadPoolService = threadPoolService;
+        this.threadPoolService.submitEvery(ThreadPool.LOWER_THREAD_POOL, this::ttlCleaner, 1 * 60);
         addNewBuckets(numberOfBuckets);
     }
 
@@ -167,6 +172,23 @@ public class BucketManager {
         }
     }
 
+    public void ttlCleaner() {
+        List<String> keys = buckets.values() // Get the Collection<Bucket>
+                .parallelStream() // Process the buckets in parallel
+                .filter(bucket -> !bucket.isEmpty()) // Ignore empty buckets
+                .flatMap(bucket -> // Turn each bucket into a stream of *its* migrating keys
+
+                    // Create a sequential stream for the *contents* of this single bucket
+                    // The parallelism is already handled at the bucket level.
+                    StreamSupport.stream(bucket.spliterator(), false)
+                        .filter(CacheEntry::isExpired)
+                        .map(CacheEntry::getKey)
+                )
+                .collect(Collectors.toList()); // Collect all keys into a single list
+        
+        if (!keys.isEmpty()) this.delete(keys);
+    }
+
     public void copyBucketIds(String nodeId, List<String> bucketIds) {
         copyBucketIds(nodeId, bucketIds, true);
     }
@@ -237,6 +259,7 @@ public class BucketManager {
                     // Create a sequential stream for the *contents* of this single bucket
                     // The parallelism is already handled at the bucket level.
                     StreamSupport.stream(bucket.spliterator(), false)
+                        .filter((entry) -> !entry.isExpired())
                         .map(CacheEntry::getKey)
                 )
                 .collect(Collectors.toList()); // Collect all keys into a single list
